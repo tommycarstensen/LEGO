@@ -131,13 +131,16 @@ def main():
 ##    plt.show()
 ##    stop
 
+    array_buried = find_buried(array_LEGO, layers)
+
     ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header('%s.asc' %(affix))
 
-    array_colors = json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize)
+    array_colors = json2array(
+        array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize)
 
     lxfml = '%s_y%i_%s.lxfml' %(affix1, layers, norm)
     numpy2lxfml(
-        array_LEGO, lxfml, array_colors,
+        array_LEGO, lxfml, array_colors, array_buried,
         nrows, ncols, xllcorner, yllcorner, cellsize)
 
 ##    print(pcount_max)
@@ -146,6 +149,30 @@ def main():
 ##    print(Counter([float(x) for x in np.nditer(array_gpw)]))
 
     return
+
+
+def find_buried(array_LEGO, layers):
+
+    array_buried = np.empty_like(array_LEGO, int)
+    n = np.shape(array_LEGO)[0]
+
+    for row in range(n):
+        for col in range(n):
+            ## no buried plates if only 1 plate
+            if array_LEGO[row][col] <= 1:
+                continue
+            ## nothing buried at the edge (no bricks at the edge anyway)
+            if row == 0 or row == n-1 or col == 0 or col == n-1:
+                continue
+            ## minimum neighbouring height
+            z = min([array_LEGO[row+x][col+y]
+                     for x in range(-1,2) for y in range(-1,2)])
+            ## not buried by neighbouring plates
+            if z == 0:
+                continue
+            array_buried[row][col] = z-1
+
+    return array_buried
 
 
 def read_gpw_header(file_gpw):
@@ -215,6 +242,13 @@ def normalize(a, layers, norm):
         stop
 
     assert math.ceil(np.amax(a)) == layers
+
+    for row in range(n):
+        for col in range(n):
+            if a[row][col] < 0:
+                a[row][col] = 1
+            else:
+                a[row][col] = math.ceil(a[row][col])
 
     return a
 
@@ -405,8 +439,8 @@ def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
                 continue
             ## continue loop over rows
             continue
-        if family == 'Maban' and longitude > 30:
-            print(row, col, latitude, longitude, family, feature['properties']['ETHNICITY'])
+##        if family == 'Maban' and longitude > 30:
+##            print(row, col, latitude, longitude, family, feature['properties']['ETHNICITY'])
         if within == False:
             print(
                 feature['properties']['ETHNICITY'], family, polygon.bounds,
@@ -419,7 +453,7 @@ def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
 
 
 def numpy2lxfml(
-    array_LEGO, lxfml, array_colors,
+    array_LEGO, lxfml, array_colors, array_buried,
     nrows, ncols, xllcorner, yllcorner, cellsize):
 
     n = np.shape(array_LEGO)[0]
@@ -456,12 +490,10 @@ def numpy2lxfml(
 ##                z = abs(int(z))
 ##                if col == 0:
 ##                    print(row,col,latitude,z)
-                if array_LEGO[row][col] < 0:
-                    array_LEGO[row][col] = 1
-                else:
-                    array_LEGO[row][col] = math.ceil(array_LEGO[row][col])
 
                 materialID = array_colors[row][col]
+
+                ## skip parts of array not covered by GeoJSON array
                 if materialID == 0: continue  # tmp!!!
 
                 ## make sure bricks are present
@@ -478,6 +510,16 @@ def numpy2lxfml(
                             designID = 3005  # 1x1 brick
                         else:
                             continue
+##                    if array_buried[row][col] >= 3*(y//3)+3:
+##                        if y%3 == 0:
+##                            designID = 3005  # 1x1 brick
+##                        else:
+##                            continue
+
+##                    if array_buried[row][col] >= y:
+##                        materialID = 1
+##                    else:
+##                        materialID = array_colors[row][col]
 
 ##                    materialID = 119
 ####                    if row < 192/2 and col < 192/2:
