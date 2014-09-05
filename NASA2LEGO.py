@@ -845,6 +845,11 @@ def numpy2lxfml(
                 with open('{}.{}.{}.lxfml'.format(
                     lxfml[:-len('.lxfml')], row1, col1), 'w') as lxfml_plate:
                     lxfml_plate.write(head('Africa.{}.{}'.format(row1, col1)))
+                    ## add grey 48x48 base plate
+                    line = format_line(refID, 4186, 194, row, 0, col)
+                    f.write(line)
+                    lxfml_plate.write(line)
+                    refID += 1
                     for row2 in range(plate_size):
                         row = row1*plate_size+row2
                         latitude = yllcorner-cellsize*(ncols-nrows)/2+cellsize*(row+0.5)*max(nrows,ncols)/n
@@ -975,17 +980,7 @@ def numpy2lxfml(
             ##                    elif int(array_LEGO[row][col]) <= 27:
             ##                        materialID = 21
 
-                                line = '        <Part'
-                                line += ' refID="{0}"'.format(refID)
-                                line += ' designID="{0}"'.format(designID)
-                                line += ' materialID="{0}"'.format(materialID)
-                                line += ' itemNos="{0}{1}"'.format(designID, materialID)
-                                line += ' angle="0" ax="0" ay="1" az="0"'
-                                line += ' tx="{0:.1f}"'.format(row*-0.8)
-                                line += ' ty="{0:.2f}"'.format(y*0.32)
-            ##                    line += ' ty="{0}"'.format((y-z)*0.32)
-                                line += ' tz="{0:.1f}"'.format(col*0.8)
-                                line += '/>\n'
+                                line = format_line(refID, designID, materialID, row, y, col)
                                 f.write(line)
                                 lxfml_plate.write(line)
                                 refID += 1
@@ -997,6 +992,7 @@ def numpy2lxfml(
                         continue
                     lxfml_plate.write(tail())
                     ## close plate lxfml file
+                    lxfml_plate.close()
                     pass
                 ## continue loop over tz
                 continue
@@ -1004,9 +1000,27 @@ def numpy2lxfml(
             continue
         f.write(tail())
         ## close file
+        f.close()
         pass
 
     return
+
+
+def format_line(refID, designID, materialID, row, y, col):
+
+    line = '        <Part'
+    line += ' refID="{0}"'.format(refID)
+    line += ' designID="{0}"'.format(designID)
+    line += ' materialID="{0}"'.format(materialID)
+    line += ' itemNos="{0}{1}"'.format(designID, materialID)
+    line += ' angle="0" ax="0" ay="1" az="0"'
+    line += ' tx="{0:.1f}"'.format(row*-0.8)
+    line += ' ty="{0:.2f}"'.format(y*0.32)
+##                    line += ' ty="{0}"'.format((y-z)*0.32)
+    line += ' tz="{0:.1f}"'.format(col*0.8)
+    line += '/>\n'
+
+    return line
 
 
 def head(name):
