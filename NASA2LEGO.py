@@ -30,7 +30,9 @@ def main():
     affix = 'afp00g'
     affix = 'afds00ag'
     affix = 'afds00g'
-    n = nrows = ncols = 5*48*1  # script fast if multiple of 2160
+    plate_size = 48
+    plate_cnt = 5
+    n = nrows = ncols = plate_cnt*plate_size*1  # script fast if multiple of 2160
     zero = 0  # add zero values to average?
 
     layers = 27
@@ -133,15 +135,18 @@ def main():
 
     array_buried = find_buried(array_LEGO, layers)
 
-    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header('%s.asc' %(affix))
+    array_3D = find_connected(array_LEGO, array_buried, layers, plate_size)
+
+    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
+        '%s.asc' %(affix))
 
     array_colors = json2array(
         array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize)
 
     lxfml = '%s_y%i_%s.lxfml' %(affix1, layers, norm)
     numpy2lxfml(
-        array_LEGO, lxfml, array_colors, array_buried,
-        nrows, ncols, xllcorner, yllcorner, cellsize)
+        array_LEGO, lxfml, array_colors, array_buried, array_3D,
+        nrows, ncols, xllcorner, yllcorner, cellsize, plate_size)
 
 ##    print(pcount_max)
 ##    print(np.amin(array_gpw))
@@ -151,25 +156,244 @@ def main():
     return
 
 
+def find_connected(array_LEGO, array_buried, layers, plate_size):
+
+    print('finding connected 1x1 plates and replacing them with larger plates')
+
+    ## DO A WHILE LOOP UNTIL area_max IS EMPTY!!!
+    ## TODO: FIRST LOOP 3 LAYERS (BRICK) AND THEN 1 LAYER (PLATES) - 12x24 brick...
+    ## DO NOT CENTER BRICK IN A DIMENSION IF FACING OTHER PLATE IN THAT DIRECTION - ie IF AT EDGE
+
+    n1 = n2 = n = np.shape(array_LEGO)[0]
+    array_3D = np.ones((layers,n,n), int)
+
+##    ## tmp!!!
+##    array_LEGO = np.array([[0,0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,1,1],[0,0,1,1,1,1,1,1,1]])
+##    layers = 1
+##    array_buried = array_LEGO
+##    n1 = np.shape(array_LEGO)[0]
+##    n2 = np.shape(array_LEGO)[1]
+
+    ## loop from North to South
+    for row1 in range(int(n/plate_size)):
+        ## loop from West to East
+        for col1 in range(int(n/plate_size)):
+            area_max = {layer:{'area':0} for layer in range(layers)}
+            tmp = 0
+            while area_max:
+                tmp += 1
+                h = np.zeros((layers, plate_size, plate_size), int)  # heights
+                w = np.zeros((layers, plate_size, plate_size), int)  # widths
+                ## North to South
+                for row2 in range(plate_size):
+                    row3 = row1*plate_size+row2
+                    ## West to East
+                    for col2 in range(plate_size):
+                        col3 = col1*plate_size+col2
+                        ## loop over layers after row and col
+                        ## to avoid looping over empty rows and cols in a layer
+                        for layer in range(
+                            array_buried[row3][col3]):
+                            ## skip if layer already filled
+                            if not layer in area_max.keys():
+                                continue
+                            ## skip if filled (np.ones)
+                            if array_3D[layer][row3][col3] != 1:
+                                h[layer][row2][col2] = 0
+                                w[layer][row2][col2] = 0
+                                continue
+                            if row2 == 0:
+                                h[layer][row2][col2] = 1
+                            else:
+                                h[layer][row2][col2] = h[layer][row2-1][col2]+1
+                            if col2 == 0:
+                                w[layer][row2][col2] = 1
+                            else:
+                                w[layer][row2][col2] = w[layer][row2][col2-1]+1
+                            ## WORKS FOR ONE WHILE LOOP!!!
+                            area = max([
+                                (dh+1)*w[layer][row2-dh][col2]
+                                for dh in range(h[layer][row2][col2])
+                                ])
+                            ## FIX TO WORK FOR MULTIPLE WHILE LOOPS!!!
+##                            areas = []
+##                            for dh in range(h[layer][row2][col2]):
+##                                area = (dh+1)*w[layer][row2-dh][col2]
+##                                areas.append(area)
+##                                if layer == 1 and col_pos >=73 and row_pos >= 21 and tmp > 1:
+##                                    print(
+##                                        'yyy', row2, col2, dh, h[layer][row2-dh][col2], w[layer][row2-dh][col2], area, area_max[layer]['area'])
+##                            area = max(areas)
+##                            if area > area_max[layer]['area']:
+##                                print('zzz')
+                                ## CHECK row_pos!!! CHECK!!!
+                            area, row_pos, col_pos, row_span, col_span = sorted([
+                                (
+                                    (dh+1)*w[layer][row2-dh][col2],
+##                                    row3-dh, col3-w[layer][row2-dh][col2]+1,
+##                                    row3-dh, col3, # SouthEast
+                                    row3, col3, # SouthEast
+                                    dh+1, w[layer][row2-dh][col2])
+                                for dh in range(h[layer][row2][col2])])[-1]
+                            area_max[layer] = {
+                                'area':area, 'row_pos':row_pos, 'col_pos':col_pos,
+                                'row_span':row_span, 'col_span':col_span}
+##                            if layer == 1 and tmp > 1:
+##                                print('xxx', area_max[layer])
+    ##                            if area > 256:
+    ##                                print(row_pos, col_pos)
+    ##                                print(row3, col3)
+    ##                                print(area_max[layer])
+    ##                                stoptmp
+                            ## layer loop
+                            continue
+            ##                ## corner
+            ##                if row == 0 and col == 0:
+            ####                    array_3D[layer][row][col] = 1
+            ##                    array_3D[layer][row][col] = np.array([1,1,1])
+            ##                ## edge
+            ##                elif row == 0:
+            ##                    array_3D[layer][row][col] = 1+min(
+            ##                        array_3D[layer][row][col-1],
+            ##                        )
+            ##                    stop1
+            ##                ## edge
+            ##                elif col == 0:
+            ##                    array_3D[layer][row][col] = 1+min(
+            ##                        array_3D[layer][row-1][col],
+            ##                        )
+            ##                    stop2
+            ##                ## neither corner nor edge
+            ##                else:
+            ####                    array_3D[layer][row][col] = 1+min(
+            ####                        array_3D[layer][row-1][col-1],
+            ####                        array_3D[layer][row-1][col],
+            ####                        array_3D[layer][row][col-1],
+            ####                        )
+            ##                    print(array_3D[layer][row][col])
+            ##                    array_3D[layer][row][col][0] = 1+min(
+            ##                        array_3D[layer][row-1][col-1][0],
+            ##                        array_3D[layer][row-1][col][0],
+            ##                        array_3D[layer][row][col-1][0],
+            ##                        )
+            ##                    array_3D[layer][row][col][1] = max(
+            ##                        array_3D[layer][row][col][0],
+            ##                        array_3D[layer][row][col][0],
+            ##                        )
+            ##                    print(array_3D[layer][row][col])
+            ##                    stop3
+            ##                if array_3D[layer][row][col] > count_max[layer][0]:
+            ##                    count_max[layer] = [
+            ##                        array_3D[layer][row][col], row, col]
+            ##                if array_3D[layer][row][col] > 15:
+            ##                    print(row, col, layer, array_3D[layer][row][col])
+                        ## col2 loop
+                        continue
+                    ## row2 loop
+                    continue
+                
+                d_square_plates = {16:91405, 8:41539, 6:3958, 4:3031}
+                for layer in range(layers):
+                    if not layer in area_max.keys():
+                        continue
+                    if area_max[layer]['area'] == 0:
+                        del area_max[layer]
+                        continue
+                    ## get row and col span
+                    row_span = area_max[layer]['row_span']
+                    col_span = area_max[layer]['col_span']
+                    ## calculate size of square plates to fill the area
+                    for size in reversed(sorted(d_square_plates.keys())):
+                        if size <= row_span and size <= col_span:
+                            break
+                    ## plate does not fit
+                    if size > row_span or size > col_span:
+                        del area_max[layer]
+                        continue
+                    ## get row and col pos and center the square pieces
+                    row_pos = area_max[layer]['row_pos']
+                    col_pos = area_max[layer]['col_pos']
+    ##                ## center the square pieces (todo: see if fewer pieces if cornered)
+    ##                ## DONT CENTER IF MOBILE 48x48 ELEMENTS!!!
+    ##                row_pos += int(area_max[layer]['row_span']%size)
+    ##                col_pos += int(area_max[layer]['col_span']%size)
+                    ## calculate number of square plates fitting inside area
+                    plate_rows = row_span//size
+                    plate_cols = col_span//size
+                    if layer == 1:
+                        print(size, row_pos, col_pos, area_max[layer])
+                    ## append plate and empty spaces to 3D array
+                    for row_major in range(plate_rows):
+                        for col_major in range(plate_cols):
+                            ## empty spaces
+                            for row_minor in range(size):
+                                ## CHECK!!!
+                                row = row_pos-row_major*size-row_minor
+                                for col_minor in range(size):
+                                    col = col_pos-col_major*size-col_minor
+    ##                                z = col_pos+plate_col*size
+    ##                                if row1 > 0 and col1 > 0:
+    ##                                    print(row1, col1, layer)
+    ##                                    print(row_major, col_major, row, col)
+    ##                                    print(row_minor, col_minor)
+    ##                                    print(plate_rows, plate_cols, size)
+    ##                                    print(area_max[layer])
+    ##                                    stoptmp
+                                    ## do what???
+    ##                                print(col, col_pos, col_major, col_minor, size)
+    ##                                print(area_max[layer])
+    ##                                print(row, row_pos, row_major, row_minor, size)
+                                    if array_3D[layer][row][col] == 0:
+                                        print(row1, col1, layer, row, col)
+                                        stop
+                                    array_3D[layer][row][col] = 0
+                            ## plate starts SE and extends to NW
+                            ## i.e. from high row to low row and from low col to high col
+                            row = row_pos+(row_major+1)*size-1
+                            row = row_pos
+                            row = row_pos-row_major*size
+                            col = col_pos+col_major*size
+                            col = col_pos
+                            col = col_pos-col_major*size
+    ##                        if col1 > 0 and row1 > 0:
+    ##                            print(row, col, row_pos, col_pos, row_major, col_major)
+    ##                            stop
+                            ## insert large plate
+                            array_3D[layer][row][col] = d_square_plates[size]
+                    area_max[layer]['area'] = 0
+                    ## layer loop
+                    continue
+                ## while loop
+                break
+                continue
+            ## col1 loop
+            continue
+        ## row1 loop
+        continue
+        
+    return array_3D
+
+
 def find_buried(array_LEGO, layers):
 
-    array_buried = np.empty_like(array_LEGO, int)
+    array_buried = np.zeros(np.shape(array_LEGO), int)
     n = np.shape(array_LEGO)[0]
 
     for row in range(n):
+        ## nothing buried at the edge (no bricks at the edge anyway)
+        if row == 0 or row == n-1:
+            continue
         for col in range(n):
+            ## nothing buried at the edge (no bricks at the edge anyway)
+            if col == 0 or col == n-1:
+                continue
             ## no buried plates if only 1 plate
             if array_LEGO[row][col] <= 1:
-                continue
-            ## nothing buried at the edge (no bricks at the edge anyway)
-            if row == 0 or row == n-1 or col == 0 or col == n-1:
                 continue
             ## minimum neighbouring height
             z = min([array_LEGO[row+x][col+y]
                      for x in range(-1,2) for y in range(-1,2)])
-            ## not buried by neighbouring plates
-            if z == 0:
-                continue
+            ## update array
             array_buried[row][col] = z-1
 
     return array_buried
@@ -254,6 +478,8 @@ def normalize(a, layers, norm):
 
 
 def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
+
+    print('Converting GeoJSON polygons to array of LEGO color points')
 
     ## colors not for sale via Pick-a-Brick:
     ## 2 light gray / grey
@@ -340,8 +566,7 @@ def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
             color = d_colors[family]
         except KeyError:
             color = 324  # medium lavender (e.g. Afrikaans)
-            if family != 'Malagasy':
-                print(family, feature['properties']['ETHNICITY'])
+##            print(family, feature['properties']['ETHNICITY'])
         if family in ('',):
 ##            print(feature['properties'], polygon.bounds, feature['id'], feature['properties']['ID'])
 ##            continue
@@ -355,6 +580,10 @@ def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
         col_min = n*(min_lon-xllcorner)/(cellsize*max(nrows,ncols))-0.5
         col_max = n*(max_lon-xllcorner)/(cellsize*max(nrows,ncols))-0.5
         within = False
+        ## Afrikaans
+        if family == 'Miscellaneous / Unclassified' and max_lat < -20:
+            family = 'Afrikaans'
+            color = 140  # earth blue
         ## loop from South to North
         for row in range(math.floor(row_min), math.ceil(row_max)):
             latitude = cellsize*(row+0.5)*max(nrows,ncols)/n+yllcorner-cellsize*(ncols-nrows)/2
@@ -366,9 +595,23 @@ def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
             for col in range(math.floor(col_min), math.ceil(col_max)):
                 longitude = cellsize*(col+0.5)*max(nrows,ncols)/n+xllcorner
                 ## incorrectly assigned to the Maban family
-                if family == 'Maban' and longitude > 30:
+                if family == 'Maban' and longitude > 30: ## min_lon > 30
+                    within = True
+                    continue ## don't continue but re-assign!!!
+                ## don't change from non-miscellaneous to miscellanous
+                if family in ('','Miscellaneous / Unclassified') and array_colors[n-row][col]:
                     within = True
                     continue
+##                ## color with color of largest nearby stack
+##                ## i.e. sort by height and filter out non-colored with if
+##                if family in ('','Miscellaneous / Unclassified'):
+####                if family not in d_colors.keys():
+##                    for x in range(3):
+##                        for y in range(3):
+##                            print(x,y,array_colors[n-row+x-1][col+y-1])
+##                            print(array_LEGO[n-row+x-1][col+y-1])
+##                    print(i, family, feature['properties']['ETHNICITY'])
+##                    stop
                 point = shapely.geometry.Point(longitude, latitude)
                 ## solve the point-in-polygen problem
 ##                if max_lat < -20 and family != 'Miscellaneous / Unclassified':
@@ -446,6 +689,11 @@ def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
                 feature['properties']['ETHNICITY'], family, polygon.bounds,
                 row_max-row_min, col_max-col_min,
                 )
+        elif family not in d_colors.keys() and family != 'Afrikaans':
+            print(
+                'color', color, 'ID', feature['id'],
+                'family', family, 'ethnicity', feature['properties']['ETHNICITY'],
+                'lonlat', round(longitude,0), round(latitude,0), 'rowcol', row, col)
         ## continue loop over features
         continue
 
@@ -453,8 +701,8 @@ def json2array(array_LEGO, nrows, ncols, xllcorner, yllcorner, cellsize):
 
 
 def numpy2lxfml(
-    array_LEGO, lxfml, array_colors, array_buried,
-    nrows, ncols, xllcorner, yllcorner, cellsize):
+    array_LEGO, lxfml, array_colors, array_buried, array_3D,
+    nrows, ncols, xllcorner, yllcorner, cellsize, plate_size):
 
     n = np.shape(array_LEGO)[0]
     a = 6378137  # semi major axis
@@ -468,13 +716,20 @@ def numpy2lxfml(
     with open(lxfml, 'w') as f:
         f.write(head('Africa'))
         ## loop from North to South
-        for row in range(n):
-            latitude = yllcorner-cellsize*(ncols-nrows)/2+cellsize*(row+0.5)*max(nrows,ncols)/n
-            if row % 10 == 0:
-                print('numpy2lxfml, row', row, 'of', n-1)
+        for row1 in range(int(n/plate_size)):
             ## loop from West to East
-            for col in range(n):
-                longitude = xllcorner+cellsize*(col+0.5)*max(nrows,ncols)/n
+            for col1 in range(int(n/plate_size)):
+                with open('{}.{}.{}.lxfml'.format(
+                    lxfml[:-len('.lxfml')], row1, col1), 'w') as lxfml_plate:
+                    lxfml_plate.write(head('Africa.{}.{}'.format(row1, col1)))
+                    for row2 in range(plate_size):
+                        row = row1*plate_size+row2
+                        latitude = yllcorner-cellsize*(ncols-nrows)/2+cellsize*(row+0.5)*max(nrows,ncols)/n
+                        if row % 10 == 0:
+                            print('numpy2lxfml, row', row, 'of', n-1)
+                        for col2 in range(plate_size):
+                            col = col1*plate_size+col2
+                            longitude = xllcorner+cellsize*(col+0.5)*max(nrows,ncols)/n
 ##                print(row,col,latitude,longitude)
 ##                N = a/math.sqrt(1-e_squared*math.sin(latitude)**2)
 ####                x = (N+h)*math.cos(latitude)*math.cos(longitude)
@@ -491,107 +746,133 @@ def numpy2lxfml(
 ##                if col == 0:
 ##                    print(row,col,latitude,z)
 
-                materialID = array_colors[row][col]
+                            ## skip parts of array not covered by GeoJSON array
+                            if array_colors[row][col] == 0: continue  # tmp!!!
 
-                ## skip parts of array not covered by GeoJSON array
-                if materialID == 0: continue  # tmp!!!
+                            ## make sure bricks are present
+                            ## for areas covered by language family polygons
+                            if array_colors[row][col] > 0 and array_LEGO[row][col] == 0:
+                                array_LEGO[row][col] = 1
 
-                ## make sure bricks are present
-                ## for areas covered by language family polygons
-                if materialID and array_LEGO[row][col] == 0:
-                    array_LEGO[row][col] = 1
+            ##                print(row,col,latitude,longitude)
 
-##                print(row,col,latitude,longitude)
+                            for y in range(int(array_LEGO[row][col])):
+                                ## white/buried
+                                if y < array_buried[row][col]:
+                                    materialID = 1
+                                ## exposed/colored
+                                else:
+                                    materialID = array_colors[row][col]
+                                ## 1x1 plate
+                                if array_3D[y][row][col] == 1:
+                                    designID = 3024  # 1x1 plate
+                                ## larger plate
+                                else:
+                                    ## empty space for larger plate
+                                    if array_3D[y][row][col] == 0:
+                                        continue
+                                    ## larger plate
+                                    else:
+                                        designID = array_3D[y][row][col]
+                                        pass
+                                    pass
 
-                for y in range(int(array_LEGO[row][col])):
-                    designID = 3024  # 1x1 plate
-                    if array_LEGO[row][col] >= 3*(y//3)+3:
-                        if y%3 == 0:
-                            designID = 3005  # 1x1 brick
-                        else:
+            ##                    ## replace plates with bricks
+            ##                    if array_LEGO[row][col] >= 3*(y//3)+3:
+            ##                        if y%3 == 0:
+            ##                            designID = 3005  # 1x1 brick
+            ##                        else:
+            ##                            continue
+            ##                    if array_buried[row][col] >= 3*(y//3)+3:
+            ##                        if y%3 == 0:
+            ##                            designID = 3005  # 1x1 brick
+            ##                        else:
+            ##                            continue
+
+            ##                    if array_buried[row][col] >= y:
+            ##                        materialID = 1
+            ##                    else:
+            ##                        materialID = array_colors[row][col]
+
+            ##                    materialID = 119
+            ####                    if row < 192/2 and col < 192/2:
+            ####                        materialID = 1 ## white/NW
+            ####                    elif row < 192/2 and col > 192/2:
+            ####                        materialID = 221 ## violet/NE
+            ####                    elif row > 192/2 and col < 192/2:
+            ####                        materialID = 119 ## green/SW
+            ####                    elif row > 192/2 and col > 192/2:
+            ####                        materialID = 26 ## black/SE
+            ##
+            ####                    ## skip if not Middle East (NE)
+            ####                    if row > 192/2 or col < 192/2:
+            ####                        continue
+            ##
+            ####                    if row > 50 and row < 90:
+            ####                        materialID = row-50
+            ##
+            ##
+            ##                    if int(array_LEGO[row][col]) == 1:
+            ##                        materialID = 1
+            ##                    elif int(array_LEGO[row][col]) == 2:
+            ##                        materialID = 226
+            ##                    elif int(array_LEGO[row][col]) == 3:
+            ##                        materialID = 119
+            ##                    elif int(array_LEGO[row][col]) == 4:
+            ##                        materialID = 28
+            ##                    elif int(array_LEGO[row][col]) == 5:
+            ##                        materialID = 212
+            ##                    elif int(array_LEGO[row][col]) == 6:
+            ##                        materialID = 23
+            ##                    elif int(array_LEGO[row][col]) == 7:
+            ##                        materialID = 222
+            ##                    elif int(array_LEGO[row][col]) == 8:
+            ##                        materialID = 221
+            ##                    elif int(array_LEGO[row][col]) == 9:
+            ##                        materialID = 21
+            ##
+            ##                    if int(array_LEGO[row][col]) <= 3:
+            ##                        materialID = 1
+            ##                    elif int(array_LEGO[row][col]) <= 6:
+            ##                        materialID = 226
+            ##                    elif int(array_LEGO[row][col]) <= 9:
+            ##                        materialID = 119
+            ##                    elif int(array_LEGO[row][col]) <= 12:
+            ##                        materialID = 28
+            ##                    elif int(array_LEGO[row][col]) <= 15:
+            ##                        materialID = 212
+            ##                    elif int(array_LEGO[row][col]) <= 18:
+            ##                        materialID = 23
+            ##                    elif int(array_LEGO[row][col]) <= 21:
+            ##                        materialID = 222
+            ##                    elif int(array_LEGO[row][col]) <= 24:
+            ##                        materialID = 221
+            ##                    elif int(array_LEGO[row][col]) <= 27:
+            ##                        materialID = 21
+
+                                line = '        <Part'
+                                line += ' refID="{0}"'.format(refID)
+                                line += ' designID="{0}"'.format(designID)
+                                line += ' materialID="{0}"'.format(materialID)
+                                line += ' itemNos="{0}{1}"'.format(designID, materialID)
+                                line += ' angle="0" ax="0" ay="1" az="0"'
+                                line += ' tx="{0:.1f}"'.format(row*-0.8)
+                                line += ' ty="{0:.2f}"'.format(y*0.32)
+            ##                    line += ' ty="{0}"'.format((y-z)*0.32)
+                                line += ' tz="{0:.1f}"'.format(col*0.8)
+                                line += '/>\n'
+                                f.write(line)
+                                lxfml_plate.write(line)
+                                refID += 1
+                                ## continue loop over ty
+                                continue
+                            ## continue loop over col2
                             continue
-##                    if array_buried[row][col] >= 3*(y//3)+3:
-##                        if y%3 == 0:
-##                            designID = 3005  # 1x1 brick
-##                        else:
-##                            continue
-
-##                    if array_buried[row][col] >= y:
-##                        materialID = 1
-##                    else:
-##                        materialID = array_colors[row][col]
-
-##                    materialID = 119
-####                    if row < 192/2 and col < 192/2:
-####                        materialID = 1 ## white/NW
-####                    elif row < 192/2 and col > 192/2:
-####                        materialID = 221 ## violet/NE
-####                    elif row > 192/2 and col < 192/2:
-####                        materialID = 119 ## green/SW
-####                    elif row > 192/2 and col > 192/2:
-####                        materialID = 26 ## black/SE
-##
-####                    ## skip if not Middle East (NE)
-####                    if row > 192/2 or col < 192/2:
-####                        continue
-##
-####                    if row > 50 and row < 90:
-####                        materialID = row-50
-##
-##
-##                    if int(array_LEGO[row][col]) == 1:
-##                        materialID = 1
-##                    elif int(array_LEGO[row][col]) == 2:
-##                        materialID = 226
-##                    elif int(array_LEGO[row][col]) == 3:
-##                        materialID = 119
-##                    elif int(array_LEGO[row][col]) == 4:
-##                        materialID = 28
-##                    elif int(array_LEGO[row][col]) == 5:
-##                        materialID = 212
-##                    elif int(array_LEGO[row][col]) == 6:
-##                        materialID = 23
-##                    elif int(array_LEGO[row][col]) == 7:
-##                        materialID = 222
-##                    elif int(array_LEGO[row][col]) == 8:
-##                        materialID = 221
-##                    elif int(array_LEGO[row][col]) == 9:
-##                        materialID = 21
-##
-##                    if int(array_LEGO[row][col]) <= 3:
-##                        materialID = 1
-##                    elif int(array_LEGO[row][col]) <= 6:
-##                        materialID = 226
-##                    elif int(array_LEGO[row][col]) <= 9:
-##                        materialID = 119
-##                    elif int(array_LEGO[row][col]) <= 12:
-##                        materialID = 28
-##                    elif int(array_LEGO[row][col]) <= 15:
-##                        materialID = 212
-##                    elif int(array_LEGO[row][col]) <= 18:
-##                        materialID = 23
-##                    elif int(array_LEGO[row][col]) <= 21:
-##                        materialID = 222
-##                    elif int(array_LEGO[row][col]) <= 24:
-##                        materialID = 221
-##                    elif int(array_LEGO[row][col]) <= 27:
-##                        materialID = 21
-
-                    line = '        <Part'
-                    line += ' refID="{0}"'.format(refID)
-                    line += ' designID="{0}"'.format(designID)
-                    line += ' materialID="{0}"'.format(materialID)
-                    line += ' itemNos="{0}{1}"'.format(designID, materialID)
-                    line += ' angle="0" ax="0" ay="1" az="0"'
-                    line += ' tx="{0:.1f}"'.format(row*-0.8)
-                    line += ' ty="{0:.2f}"'.format(y*0.32)
-##                    line += ' ty="{0}"'.format((y-z)*0.32)
-                    line += ' tz="{0:.1f}"'.format(col*0.8)
-                    line += '/>\n'
-                    f.write(line)
-                    refID += 1
-                    ## continue loop over ty
-                    continue
+                        ## continue loop over row2
+                        continue
+                    lxfml_plate.write(tail())
+                    ## close plate lxfml file
+                    pass
                 ## continue loop over tz
                 continue
             ## continue loop over tx
