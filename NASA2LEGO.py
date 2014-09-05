@@ -178,10 +178,12 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
     for row1 in range(int(n/plate_size)):
         ## loop from West to East
         for col1 in range(int(n/plate_size)):
+            print(row1, col1)
+            if row1 != 2 or col1 != 3: continue ## tmp!!!
             area_max = {layer:{'area':0} for layer in range(layers)}
-            tmp = 0
+            i = -1
             while area_max:
-                tmp += 1
+                i += 1
                 h = np.zeros((layers, plate_size, plate_size), int)  # heights
                 w = np.zeros((layers, plate_size, plate_size), int)  # widths
                 ## North to South
@@ -192,29 +194,102 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
                         col3 = col1*plate_size+col2
                         ## loop over layers after row and col
                         ## to avoid looping over empty rows and cols in a layer
+##                        if row1 == 2 and col1 == 3 and i >= 0 and row2 == 41 and col2 == 4:
+##                            print('bbbbbbbbb', i, row2, col2, array_buried[row3][col3], row3, col3)
                         for layer in range(
                             array_buried[row3][col3]):
+##                            if layer == 0 and row1 == 2 and col1 == 3 and row2 == 41 and col2 == 4 and i > 1:
+##                                print(i, h[layer][row2][col2], w[layer][row2][col2])
+##                                stop1
                             ## skip if layer already filled
                             if not layer in area_max.keys():
+##                                if layer == 0 and row1 == 2 and col1 == 3 and row2 == 41 and col2 == 4:
+##                                    print(i, h[layer][row2][col2], w[layer][row2][col2])
+##                                    stop2
                                 continue
                             ## skip if filled (np.ones)
                             if array_3D[layer][row3][col3] != 1:
-                                h[layer][row2][col2] = 0
-                                w[layer][row2][col2] = 0
+##                                h[layer][row2][col2] = 0
+##                                w[layer][row2][col2] = 0
+####                                if layer == 0 and row1 == 2 and col1 == 3 and i == 12 and row2 == 38 and col2 == 4:
+####                                    print(h[layer][row2][col2], w[layer][row2][col2])
+####                                    print(array_3D[layer][row3][col3], layer, row3, col3)
+####                                    stop2
+                                if layer == 0 and row1 == 2 and col1 == 3 and row2 == 41 and col2 == 4:
+                                    print(i, h[layer][row2][col2], w[layer][row2][col2])
+                                    stop3
                                 continue
+                            ## first row
                             if row2 == 0:
                                 h[layer][row2][col2] = 1
+                            ## append to previous row
                             else:
                                 h[layer][row2][col2] = h[layer][row2-1][col2]+1
+                            ## first col
                             if col2 == 0:
                                 w[layer][row2][col2] = 1
+                            ## append to previous col
                             else:
                                 w[layer][row2][col2] = w[layer][row2][col2-1]+1
-                            ## WORKS FOR ONE WHILE LOOP!!!
-                            area = max([
-                                (dh+1)*w[layer][row2-dh][col2]
-                                for dh in range(h[layer][row2][col2])
-                                ])
+####                                if w[layer][41-15][47] > 0:
+####                                    print(w[layer][41-15][47])
+####                                    print(row2, col2)
+####                                    print(w[layer][row2][col2-1])
+####                                    print(w[layer][row2-1][col2-1])
+####                                    print(w[layer][row2-1][col2])
+####                                    print(h[layer][row2][col2-1])
+####                                    print(h[layer][row2-1][col2-1])
+####                                    print(h[layer][row2-1][col2])
+####                                    stop
+####                            if tmp == 2 and layer == 1 and row1 == 0 and col1 == 1:
+######                                print(row2, col2, h[layer][row2][col2], w[layer][row2][col2])
+####                                print(w[layer][41-15][47])
+##                            ## WORKS FOR ONE WHILE LOOP!!!
+####                            area = max([
+####                                (dh+1)*w[layer][row2-dh][col2]
+####                                for dh in range(h[layer][row2][col2])
+####                                ])
+##                            if row1 == 2 and col1 == 3 and row2 == 41 and col2 == 4 and (h[0][41][4] == 0 or w[0][41][4] == 0):
+##                                print(i, h[layer][row2][col2], w[layer][row2][col2], row2, col2, layer, array_buried[137][148])
+##                                stop5
+####                            if layer == 0 and row1 == 2 and col1 == 3 and row2 == 41+1 and col2 == 4+1 and i >= 12:
+####                                print(i, h[layer][row2][col2], w[layer][row2][col2])
+####                                stop4
+                            areas = [(0,None,None)]
+                            min_w = w[layer][row2][col2]
+                            for dh in range(h[layer][row2][col2]):
+                                h1 = dh+1
+                                w1 = w[layer][row2-dh][col2]
+                                if w1 == 0:
+                                    stop
+                                    break
+                                if w1 < min_w:
+                                    min_w = w1
+                                ## don't append area if 4x4 brick can't fit inside it
+                                if h1 < 4 or min_w < 4:
+                                    continue
+                                areas.append((h1*min_w,h1,min_w))
+                            min_h = h[layer][row2][col2]
+                            for dw in range(w[layer][row2][col2]):
+                                w1 = dw+1
+                                h1 = h[layer][row2][col2-dw]
+                                if h1 == 0:
+                                    stop
+                                    break
+                                if h1 < min_h:
+                                    min_h = h1
+                                ## don't append area if 4x4 brick can't fit inside it
+                                if min_h < 4 or w1 < 4:
+                                    continue
+                                areas.append((min_h*w1,min_h,w1))
+                            area, row_span, col_span = sorted(areas)[-1]
+##                            if layer == 0 and row3 == 137 and col3 == 148 and i == 12:
+##                                print('areas', areas)
+##                            if layer == 0 and row3 == 138 and col3 == 149 and i == 12:
+##                                print('areas', areas)
+##                            if layer == 0 and row3 == 141 and col3 == 152 and i == 12:
+##                                print('ccccc',i,area,areas)
+####                                stop9
                             ## FIX TO WORK FOR MULTIPLE WHILE LOOPS!!!
 ##                            areas = []
 ##                            for dh in range(h[layer][row2][col2]):
@@ -224,20 +299,25 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
 ##                                    print(
 ##                                        'yyy', row2, col2, dh, h[layer][row2-dh][col2], w[layer][row2-dh][col2], area, area_max[layer]['area'])
 ##                            area = max(areas)
-##                            if area > area_max[layer]['area']:
+                            if area > area_max[layer]['area']:
 ##                                print('zzz')
                                 ## CHECK row_pos!!! CHECK!!!
-                            area, row_pos, col_pos, row_span, col_span = sorted([
-                                (
-                                    (dh+1)*w[layer][row2-dh][col2],
-##                                    row3-dh, col3-w[layer][row2-dh][col2]+1,
-##                                    row3-dh, col3, # SouthEast
-                                    row3, col3, # SouthEast
-                                    dh+1, w[layer][row2-dh][col2])
-                                for dh in range(h[layer][row2][col2])])[-1]
-                            area_max[layer] = {
-                                'area':area, 'row_pos':row_pos, 'col_pos':col_pos,
-                                'row_span':row_span, 'col_span':col_span}
+##                                (
+##                                    area, row_pos, col_pos, row_span, col_span
+##                                    ) = sorted([
+##                                        (
+##                                            (dh+1)*w[layer][row2-dh][col2],
+##    ##                                    row3-dh, col3-w[layer][row2-dh][col2]+1,
+##    ##                                    row3-dh, col3, # SouthEast
+##                                            row3, col3, # SouthEast
+##                                            dh+1, w[layer][row2-dh][col2])
+##                                        for dh in range(h[layer][row2][col2])])[-1]
+                                area_max[layer] = {
+                                    'area':area, 'row_pos':row3, 'col_pos':col3,
+                                    'row_span':row_span, 'col_span':col_span}
+##                                if tmp == 2 and layer == 1 and row1 == 0 and col1 == 1:
+##                                    for dh in range(h[layer][row2][col2]):
+##                                        print(area, row2, col2, dh, w[layer][row2-dh][col2])
 ##                            if layer == 1 and tmp > 1:
 ##                                print('xxx', area_max[layer])
     ##                            if area > 256:
@@ -291,13 +371,35 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
                         continue
                     ## row2 loop
                     continue
-                
+
                 d_square_plates = {16:91405, 8:41539, 6:3958, 4:3031}
                 for layer in range(layers):
+##                    if layer == 0 and row1 == 2 and col1 == 3:
+##                        print('yyyyy', i, area_max[layer])
+##                    if layer == 0 and row1 == 2 and col1 == 3 and i == 12:
+##                        print(area_max[layer])
+##                        stop5
+##                        for row2 in range(48):
+##                            row3 = row1*plate_size+row2
+##                            for col2 in range(48):
+##                                col3 = col1*plate_size+col2
+##                                print(
+##                                    'aaaaaa', row2, col2,
+##                                    'h', h[layer][row2][col2],
+##                                    'w', w[layer][row2][col2],
+##                                    array_3D[layer][row3][col3]
+##                                    )
+##                        stop
                     if not layer in area_max.keys():
+##                        if row1 == 2 and col1 == 3 and layer == 0:
+##                            print(i, size, row_span, col_span)
+##                            stop12
                         continue
                     if area_max[layer]['area'] == 0:
                         del area_max[layer]
+##                        if row1 == 2 and col1 == 3 and layer == 0:
+##                            print(i, size, row_span, col_span)
+##                            stop11
                         continue
                     ## get row and col span
                     row_span = area_max[layer]['row_span']
@@ -308,6 +410,10 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
                             break
                     ## plate does not fit
                     if size > row_span or size > col_span:
+##                        if row1 == 2 and col1 == 3 and layer == 0:
+##                            print(i, size, row_span, col_span)
+##                            print(area_max[layer])
+##                            stop10
                         del area_max[layer]
                         continue
                     ## get row and col pos and center the square pieces
@@ -320,8 +426,8 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
                     ## calculate number of square plates fitting inside area
                     plate_rows = row_span//size
                     plate_cols = col_span//size
-                    if layer == 1:
-                        print(size, row_pos, col_pos, area_max[layer])
+##                    if layer == 1:
+##                        print(size, row_pos, col_pos, area_max[layer])
                     ## append plate and empty spaces to 3D array
                     for row_major in range(plate_rows):
                         for col_major in range(plate_cols):
@@ -344,9 +450,20 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
     ##                                print(area_max[layer])
     ##                                print(row, row_pos, row_major, row_minor, size)
                                     if array_3D[layer][row][col] == 0:
-                                        print(row1, col1, layer, row, col)
+                                        print('row1col1', row1, col1, layer, row, col)
+                                        print(area_max[layer])
+                                        print('iteration', tmp)
                                         stop
                                     array_3D[layer][row][col] = 0
+##                                    if array_3D[0][134][148] != 1:
+                                    if array_3D[0][137][148] != 1:
+                                        print('i', i, 'layer', layer, 'row1/col1', row1, col1)
+                                        print('row/col_major/minor', row_major, col_major, row_minor, col_minor)
+                                        print(row, col)
+                                        print('plate_rows/cols', plate_rows, plate_cols)
+                                        print(area_max[layer])
+                                        print(size)
+                                        stop6
                             ## plate starts SE and extends to NW
                             ## i.e. from high row to low row and from low col to high col
                             row = row_pos+(row_major+1)*size-1
@@ -360,12 +477,17 @@ def find_connected(array_LEGO, array_buried, layers, plate_size):
     ##                            stop
                             ## insert large plate
                             array_3D[layer][row][col] = d_square_plates[size]
+##                    if layer == 0 and row1 == 2 and col1 == 3:
+##                        print('xxxxxx', 'layer', layer, area_max[layer])
                     area_max[layer]['area'] = 0
                     ## layer loop
                     continue
                 ## while loop
-                break
+##                break
                 continue
+##            if row1 == 2 and col1 == 3:
+##                print(i)
+##                stop8
             ## col1 loop
             continue
         ## row1 loop
@@ -393,8 +515,9 @@ def find_buried(array_LEGO, layers):
             ## minimum neighbouring height
             z = min([array_LEGO[row+x][col+y]
                      for x in range(-1,2) for y in range(-1,2)])
-            ## update array
-            array_buried[row][col] = z-1
+            if z >= 1:
+                ## update array
+                array_buried[row][col] = z-1
 
     return array_buried
 
@@ -763,6 +886,8 @@ def numpy2lxfml(
                                 ## exposed/colored
                                 else:
                                     materialID = array_colors[row][col]
+##                                if row == 137 and col == 148:
+##                                    materialID = 21
                                 ## 1x1 plate
                                 if array_3D[y][row][col] == 1:
                                     designID = 3024  # 1x1 plate
