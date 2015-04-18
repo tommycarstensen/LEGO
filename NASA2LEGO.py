@@ -12,9 +12,12 @@ import json
 import shapely
 from shapely.geometry import Point
 import itertools
+import argparse
 
 
 def main():
+
+    args = argparser()
 
 ##    lcm = nrows2*n/fractions.gcd(nrows2,n)
 ##    print(lcm,fractions.gcd(nrows2,n))
@@ -23,25 +26,125 @@ def main():
 ##    print(nrows2/fractions.gcd(nrows2,n))
 ##    stop
 
-    ## argparse
-    affix = 'afp00ag'
-    affix = 'afp00g'
-    affix = 'afds00ag'
-    affix = 'afds00g'
-    plate_size = 48
-    plate_cnt = 5
-    n = nrows = ncols = plate_cnt*plate_size  # script fast if multiple of 2160
-    zero = 0  # add zero values to average?
-
-    layers = 27
-    norm = 'log10'
-    norm = 'log2'
-    norm = 'unity'  # feature scaling
-    norm = 'log'
-
-    affix1 = 'out_NASA2LEGO/{0}_{1:d}x{1:d}_zero{2:d}'.format(affix, n, zero)
+    affix1 = 'out_NASA2LEGO/{0}_{1:d}x{1:d}_zero{2:d}'.format(
+        args.affix, args.n, args.zero)
 
     if not os.path.isfile('{}.npy'.format(affix1)):
+        array_2D_density = asc2np(args, affix1)
+    else:
+        array_2D_density = np.load('{}.npy'.format(affix1))
+
+##    x = []
+##    for row in range(240):
+##        for col in range(240):
+##            if array_2D_density[row][col] == 0:
+##                continue
+####            if array_2D_density[row][col] >= 200:
+####                continue
+##            x += [math.log(array_2D_density[row][col])]
+####            x += [array_2D_density[row][col]]
+##    print(len(x))
+##    import matplotlib.pyplot as plt
+##    plt.xlabel('Population Density (arbitrary unit)')
+##    plt.ylabel('Frequency')
+##    n, bins, patches = plt.hist(x, 50, normed=1, facecolor='g', alpha=0.75)
+####    hist, bins = np.histogram(array_2D_density, bins=50)
+####    width = 0.7 * (bins[1] - bins[0])
+####    center = (bins[:-1] + bins[1:]) / 2
+#####    plt.bar(center, hist, width=width)
+####    plt.bar(center, hist)
+##    plt.show()
+##    stop
+
+    array_2D_density = normalize(array_2D_density, args)
+
+##    x = []
+##    for row in range(240):
+##        for col in range(240):
+##            if array_2D_density[row][col] == 0:
+##                continue
+####            if array_2D_density[row][col] >= 200:
+####                continue
+####            x += [math.log(array_2D_density[row][col])]
+##            x += [array_2D_density[row][col]]
+##    print(len(x))
+##    import matplotlib.pyplot as plt
+##    plt.xlabel('Population Density (arbitrary unit)')
+##    plt.ylabel('Frequency')
+##    n, bins, patches = plt.hist(x, 50, normed=1, facecolor='g', alpha=0.75)
+####    hist, bins = np.histogram(array_2D_density, bins=50)
+####    width = 0.7 * (bins[1] - bins[0])
+####    center = (bins[:-1] + bins[1:]) / 2
+#####    plt.bar(center, hist, width=width)
+####    plt.bar(center, hist)
+##    plt.show()
+##    stop
+
+    array_2D_buried = find_buried(array_2D_density, args.layers)
+
+    array_3D_designIDs = find_connected_buried(
+        args.n, array_2D_buried, args.layers, args.plate_size)
+
+    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
+        '{}.asc'.format(args.affix))
+
+    array_2D_materialIDs = json2array(
+        args.n, nrows, ncols, xllcorner, yllcorner, cellsize)
+
+    array_3D_designIDs, array_3D_materialIDs = find_connected_exposed(
+        array_2D_density, array_2D_buried, args.layers,
+        array_3D_designIDs, array_2D_materialIDs)
+
+    lxfml = '{}_y{:d}_{}.lxfml'.format(affix1, args.layers, args.norm)
+    numpy2lxfml(
+        array_2D_density, lxfml, array_2D_materialIDs, array_2D_buried,
+        array_3D_designIDs, array_3D_materialIDs,
+        nrows, ncols, xllcorner, yllcorner, cellsize, args.plate_size)
+
+##    print(pcount_max)
+##    print(np.amin(array_gpw))
+##    from collections import Counter
+##    print(Counter([float(x) for x in np.nditer(array_gpw)]))
+
+    return
+
+
+def argparser():
+    
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        '--affix', default='afds00g',
+        choices=['afp00ag', 'afp00g', 'afds00ag', 'afds00g'])
+
+    parser.add_argument(
+        '--plate_size', default=48, type=int, choices=[16,32,48],
+        help='Size of base plates to build on.')
+
+    parser.add_argument(
+        '--plate_cnt', default=5,
+        help='Number of base plates along one dimension.')
+
+    parser.add_argument(
+        '--zero', help = 'add zero values to average?', action='store_true')
+
+    parser.add_argument('--layers', default = 27, type=int)
+
+    parser.add_argument('--norm', default = 'log', choices=[
+        'log10', 'log2', 'unity', 'log']) # unity is feature scaling
+
+    args = parser.parse_args()
+
+    # script fast if multiple of 2160
+    args.n = n = nrows = ncols = args.plate_cnt*args.plate_size
+
+    assert args.layers % 3 == 0
+
+    return args
+
+
+def asc2np(args, affix1):
+    
 ##        array_gpw = read_gpw('afp00g.asc')
         array_gpw = read_gpw('{}.asc'.format(affix))
 
@@ -70,7 +173,7 @@ def main():
                         if array_gpw[x3][y3] > 0:
                             array_2D_density_cnt[x1][y1] += 1
 
-        if zero == 0:
+        if not zero:
             for row in range(n):
                 for col in range(n):
                     if array_2D_density[row][col] == 0:
@@ -82,81 +185,7 @@ def main():
         del array_gpw
         del array_2D_density_cnt
 
-    else:
-        array_2D_density = np.load('{}.npy'.format(affix1))
-
-##    x = []
-##    for row in range(240):
-##        for col in range(240):
-##            if array_2D_density[row][col] == 0:
-##                continue
-####            if array_2D_density[row][col] >= 200:
-####                continue
-##            x += [math.log(array_2D_density[row][col])]
-####            x += [array_2D_density[row][col]]
-##    print(len(x))
-##    import matplotlib.pyplot as plt
-##    plt.xlabel('Population Density (arbitrary unit)')
-##    plt.ylabel('Frequency')
-##    n, bins, patches = plt.hist(x, 50, normed=1, facecolor='g', alpha=0.75)
-####    hist, bins = np.histogram(array_2D_density, bins=50)
-####    width = 0.7 * (bins[1] - bins[0])
-####    center = (bins[:-1] + bins[1:]) / 2
-#####    plt.bar(center, hist, width=width)
-####    plt.bar(center, hist)
-##    plt.show()
-##    stop
-
-    array_2D_density = normalize(array_2D_density, layers, norm)
-
-##    x = []
-##    for row in range(240):
-##        for col in range(240):
-##            if array_2D_density[row][col] == 0:
-##                continue
-####            if array_2D_density[row][col] >= 200:
-####                continue
-####            x += [math.log(array_2D_density[row][col])]
-##            x += [array_2D_density[row][col]]
-##    print(len(x))
-##    import matplotlib.pyplot as plt
-##    plt.xlabel('Population Density (arbitrary unit)')
-##    plt.ylabel('Frequency')
-##    n, bins, patches = plt.hist(x, 50, normed=1, facecolor='g', alpha=0.75)
-####    hist, bins = np.histogram(array_2D_density, bins=50)
-####    width = 0.7 * (bins[1] - bins[0])
-####    center = (bins[:-1] + bins[1:]) / 2
-#####    plt.bar(center, hist, width=width)
-####    plt.bar(center, hist)
-##    plt.show()
-##    stop
-
-    array_2D_buried = find_buried(array_2D_density, layers)
-
-    array_3D_designIDs = find_connected_buried(n, array_2D_buried, layers, plate_size)
-
-    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
-        '{}.asc'.format(affix))
-
-    array_2D_materialIDs = json2array(
-        n, nrows, ncols, xllcorner, yllcorner, cellsize)
-
-    array_3D_designIDs, array_3D_materialIDs = find_connected_exposed(
-        array_2D_density, array_2D_buried, layers,
-        array_3D_designIDs, array_2D_materialIDs)
-
-    lxfml = '{}_y{:d}_{}.lxfml'.format(affix1, layers, norm)
-    numpy2lxfml(
-        array_2D_density, lxfml, array_2D_materialIDs, array_2D_buried,
-        array_3D_designIDs, array_3D_materialIDs,
-        nrows, ncols, xllcorner, yllcorner, cellsize, plate_size)
-
-##    print(pcount_max)
-##    print(np.amin(array_gpw))
-##    from collections import Counter
-##    print(Counter([float(x) for x in np.nditer(array_gpw)]))
-
-    return
+        return array_2D_density
 
 
 def find_connected_exposed(
@@ -659,16 +688,15 @@ def read_gpw_header(file_gpw):
     return ncols, nrows, xllcorner, yllcorner, cellsize
 
 
-def normalize(a, layers, norm):
+def normalize(a, args):
 
     n = np.shape(a)[0]
 
-    assert layers % 3 == 0
     ## https://en.wikipedia.org/wiki/Normalization_(statistics)
-    if norm == 'log10':
+    if args.norm == 'log10':
         amax = np.amax(a)
         a = np.log10(np.divide(a, amax/(10**layers)))
-    elif norm == 'log':
+    elif args.norm == 'log':
         amax = np.amax(a)
         amin = np.amin(a[np.nonzero(a)])
 ##        cnt = 0
@@ -684,7 +712,7 @@ def normalize(a, layers, norm):
 ##                cnt += 1
 ##                sumx += log
 ##                sumxx += log*log
-                a[row][col] = max(1, layers*log/math.log(amax))
+                a[row][col] = max(1, args.layers*log/math.log(amax))
 ##                _den = (math.log(amax)-math.log(amin))
 ##                a[row][col] = layers*(log-math.log(amin))/_den
 ####        mean = sumx/cnt
@@ -696,18 +724,18 @@ def normalize(a, layers, norm):
 ##        print(np.percentile(a,0.01))
 ##        stop
 ####        a = np.log(np.divide(a, amax/(math.exp(layers))))
-    elif norm == 'unity':
+    elif args.norm == 'unity':
         amin = 0
         amax = np.amax(a)
-        a = np.divide(a, amax/layers)
-    elif norm == 'log2':
+        a = np.divide(a, amax/args.layers)
+    elif args.norm == 'log2':
         amax = np.amax(a)
         a = np.log2(
-            np.divide(a, amax/(2**layers)))
+            np.divide(a, amax/(2**args.layers)))
     else:
         stop
 
-    assert math.ceil(np.amax(a)) == layers
+    assert math.ceil(np.amax(a)) == args.layers
 
     for row in range(n):
         for col in range(n):
