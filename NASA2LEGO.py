@@ -35,8 +35,8 @@ def main():
 
     layers = 27
     norm = 'log10'
-    norm = 'unity'  # feature scaling
     norm = 'log2'
+    norm = 'unity'  # feature scaling
     norm = 'log'
 
     affix1 = 'out_NASA2LEGO/{0}_{1:d}x{1:d}_zero{2:d}'.format(affix, n, zero)
@@ -179,12 +179,13 @@ def find_connected_exposed(
             jrow = 0
             icol = 0
             jcol = 1
-            continue  # tmp!!!
+            continue ## tmp!!! tmp1!!!
         else:
             irow = 0
             jrow = 1
             icol = 1
             jcol = 0
+            continue ## tmp!!! tmp2!!! sep13
         for i in range(n):
             seq = []
             d_colors = {}
@@ -335,7 +336,12 @@ def append_designID_materialID(
     for j in range(length):
         row = i*irow+(pos+j)*jrow
         col = i*icol+(pos+j)*jcol
-        if j == length-1:
+        ## replace Southern plate
+        ## replace Eastern plate
+        if layer % 2 == 1 and j == 0:  ## sep13
+            array_3D_designIDs[layer][row][col] = designID
+            array_3D_materialIDs[layer][row][col] = materialID
+        elif j == length-1:
             array_3D_designIDs[layer][row][col] = designID
             array_3D_materialIDs[layer][row][col] = materialID
         else:
@@ -451,7 +457,6 @@ def find_connected_buried(n, array_2D_buried, layers, plate_size):
 
     d_designIDs = {16: 91405, 8: 41539, 6: 3958, 4: 3031}
 
-##    ## tmp!!!
 ##    array_2D_density = np.array([
 ##    [0,0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,1,1],[0,0,1,1,1,1,1,1,1]])
 ##    layers = 1
@@ -461,9 +466,11 @@ def find_connected_buried(n, array_2D_buried, layers, plate_size):
 
     ## loop from North to South
     for row1 in range(int(n/plate_size)):
-##        continue ## tmp!!!
+        if False: ##sep20
+            continue ## tmp!!! sep13
         ## loop from West to East
         for col1 in range(int(n/plate_size)):
+            if row1 != 2 or col1 != 3: continue ## tmp!!! sep13
             print(row1, col1)
             area_max = {layer: {'area': 0} for layer in range(layers)}
             i = -1
@@ -582,14 +589,13 @@ def find_connected_buried(n, array_2D_buried, layers, plate_size):
                             ## plate starts SE and extends to NW
                             ## i.e. from high row to low row
                             ## and from low col to high col
-                            row = row_pos+(row_major+1)*size-1
-                            row = row_pos
                             row = row_pos-row_major*size
-                            col = col_pos+col_major*size
-                            col = col_pos
                             col = col_pos-col_major*size
                             ## insert large plate
-                            array_3D_designIDs[layer][row][col] = d_designIDs[size]
+                            if layer % 2 == 1 and 2+2==5:  ## sep13
+                                array_3D_designIDs[layer][row-size+1][col] = d_designIDs[size]
+                            else:
+                                array_3D_designIDs[layer][row][col] = d_designIDs[size]
                             ## Continue loop over col_major
                             continue
                         ## Continue loop over row_major.
@@ -787,6 +793,56 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
         'Fur': 135,  # Sand Blue (4126)
         }
 
+    d_colors = {
+        ## Afro-Asiatic
+        ## Yellow
+        'Semitic: Arab, Bedouin': 24,
+        'Cushitic': 24,
+        'Chadic': 24,
+        'Berber': 24,
+        'Chadic / Cushitic': 24,
+        'Chadic / Fufulde': 24,
+        ## Nilo-Saharan (Berta, *Fur*, Gumuz, Koman, Kuliak, Kunama, *Maban*,
+        ## Saharan, Songhay, Central Sudanic, Eastern Sudanic)
+        ## Red
+        ## Nilotic (E: Turkana, Maasai; S: Kalenjin, Datooga; W: Luo; Burun)
+        'Saharan': 21,
+        'Saharan / Nilotic': 21,
+        'Saharan / Cushitic': 21,
+        'Nilotic': 21,
+        'Nilotic / Bantu': 21,
+        'Nilotic / Bantoid': 21,
+        'Chari-Nile / Nilotic': 21,
+        'Maban': 21,
+        'Fur': 21,
+        ## Niger-Congo A (not Bantu)
+        ## Blue
+        'Northern Mande': 23,
+        'Voltaic': 23,
+        'Kru': 23,
+        'Adamawa-Ubangian': 23,
+        'Bantoid': 23,
+        'Chari-Nile': 23,
+        'Adamawa-Ubangian / Chari-Nile': 23,
+        'West Atlantic': 23,
+        'Fufulde': 23,
+        'Fufulde / Adamawa-Ubangia':  23,
+        'Songhai': 23,
+        'Kwa': 23,
+        'Southern Mande': 23,
+        'Kordofanian': 23,
+        ## Niger-Congo B (Bantu)
+        ## Green
+        'Bantu': 28,
+        'Bantu / Bantu': 28,
+        'Gbaya': 28,
+        ## Khoisan languages / Khoe languages
+        ## Orange (do Tan instead?! more common!!!)
+        'San': 106,
+        'Sandawe': 106,
+        'Khoi:  Nama, Bergdama': 106,
+        }
+
     array_2D_materialIDs = np.zeros((n, n), int)
 
     with open('etnicity_felix.json') as f:
@@ -822,6 +878,8 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
         if family == 'Miscellaneous / Unclassified' and max_lat < -20:
             family = 'Afrikaans'
             color = 140  # earth blue
+            color = 5  # tan
+            color = 119  # lime
         ## loop from South to North
         for row in range(math.floor(row_min), math.ceil(row_max)):
             latitude = cellsize*(row+0.5)*max(nrows, ncols)/n+yllcorner
@@ -1044,9 +1102,13 @@ def format_line(refID, designID, materialID, row, y, col):
     line += ' designID="{0}"'.format(designID)
     line += ' materialID="{0}"'.format(materialID)
     line += ' itemNos="{0}{1}"'.format(designID, materialID)
-    if y % 2 == 0:
-        line += ' angle="0" ax="0" ay="1" az="0"'
-##        line += ' angle="90" ax="0" ay="1" az="0"' ## tmp!!! test!!!
+    if y % 2 == 1 and designID != 4186:  ## sep13
+##        line += ' angle="0" ax="0" ay="1" az="0"'
+        line += ' angle="90" ax="0" ay="1" az="0"' ## tmp!!! test!!! East to West (from same point as S/N)
+##        line += ' angle="90" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
+##        line += ' angle="270" ax="0" ay="1" az="0"' ## tmp!!! test!!! East to West (from same point as S/N)
+##        line += ' angle="270" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
+##        line += ' angle="0" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
     else:
         line += ' angle="0" ax="0" ay="1" az="0"'
     line += ' tx="{0:.1f}"'.format(row*-0.8)
