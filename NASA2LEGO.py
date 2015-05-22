@@ -15,6 +15,28 @@ import itertools
 import argparse
 
 
+## 1xlen plates
+d_len2designIDs = {1: 3024, 2: 3023, 3: 3623, 4: 3710, 6: 3666, 8: 3460}
+d_designIDs2dim = {v:{'dim0':1,'dim1':k} for k,v in d_len2designIDs.items()}
+## square plates
+d_designIDs = {16: 91405, 8: 41539, 6: 3958, 4: 3031}
+for k,v in d_designIDs.items():
+    d_designIDs2dim[v] = {'dim0':k,'dim1':k}
+designID_baseplate = 4186
+materialID_grey = 194
+
+
+## tmp!!! sep13
+
+
+## TODO: FIRST LOOP 3 LAYERS (BRICK) AND THEN 1 LAYER (PLATES)
+## I.E. REPLACE CONNECTED PLATES IN 3 LAYERS WITH CHEAPER 12x24 brick...
+## e.g. function find_connected_buried
+## https://www.bricklink.com/catalogItem.asp?P=30072
+## https://service.lego.com/en-gb/replacementparts#WhatIndividualBrickBuy/30072
+## 30072 out of producing since 2008 according to TLG
+
+
 def main():
 
     args = argparser()
@@ -26,12 +48,14 @@ def main():
 ##    print(nrows2/fractions.gcd(nrows2,n))
 ##    stop
 
-    affix1 = 'out_NASA2LEGO/{0}_{1:d}x{1:d}_zero{2:d}'.format(
-        args.affix, args.n, args.zero)
+    affix1 = 'out_NASA2LEGO/{0}_{1:d}x{1:d}_dens{2}'.format(
+        args.affix, args.n, args.density)
 
     if not os.path.isfile('{}.npy'.format(affix1)):
+        ## slow
         array_2D_density = asc2np(args, affix1)
     else:
+        ## fast
         array_2D_density = np.load('{}.npy'.format(affix1))
 
 ##    x = []
@@ -58,6 +82,37 @@ def main():
 
     array_2D_density = normalize(array_2D_density, args)
 
+    ## fast
+    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
+        '{}.asc'.format(args.affix))
+    assert nrows == 1920 and ncols == 2160
+    assert yllcorner == -40 and xllcorner == -30
+    assert round(yllcorner+cellsize*nrows,0) == 40
+    assert round(xllcorner+cellsize*ncols,0) == 60
+
+##    row = 0
+##    col = 0
+##    n = 240
+##    dy = cellsize*(row+0.5)*max(nrows, ncols)/n
+##    dy -= cellsize*(ncols-nrows)/2
+##    latitude = yllcorner+dy
+##    dx = cellsize*(col+0.5)*max(nrows, ncols)/n
+##    longitude = xllcorner+dx
+##    print(yllcorner,xllcorner,latitude,longitude,dy,dx,row,col)
+##    print(ncols, nrows, cellsize, yllcorner, xllcorner, yllcorner+cellsize*nrows, xllcorner+cellsize*ncols)
+##    stop
+                
+    ## slow - convert ethnicity polygons from json file to numpy array
+    ## i.e. assign a tentative materialID to each 2D point
+    array_2D_materialIDs = json2array(
+        args, nrows, ncols, xllcorner, yllcorner, cellsize)
+
+    ## Set zero density if no color. Not a good solution, because lakes will
+    ## randomly appear and disappear, because the polygons are poorly defined.
+##    array_2D_density = np.where(
+##        array_2D_materialIDs!=0, array_2D_density, 0)
+    color_as_nearby(args, array_2D_density, array_2D_materialIDs)
+
 ##    x = []
 ##    for row in range(240):
 ##        for col in range(240):
@@ -80,31 +135,65 @@ def main():
 ##    plt.show()
 ##    stop
 
+    ## fast
     array_2D_buried = find_buried(array_2D_density, args.layers)
 
-    array_3D_designIDs = find_connected_buried(
-        args.n, array_2D_buried, args.layers, args.plate_size)
+    ## fast
+    array_3D_designIDs = find_connected_buried(args, array_2D_buried)
 
-    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
-        '{}.asc'.format(args.affix))
-
-    array_2D_materialIDs = json2array(
-        args.n, nrows, ncols, xllcorner, yllcorner, cellsize)
-
+    ## 
     array_3D_designIDs, array_3D_materialIDs = find_connected_exposed(
         array_2D_density, array_2D_buried, args.layers,
         array_3D_designIDs, array_2D_materialIDs)
 
+    ## slow
     lxfml = '{}_y{:d}_{}.lxfml'.format(affix1, args.layers, args.norm)
     numpy2lxfml(
+        args,
         array_2D_density, lxfml, array_2D_materialIDs, array_2D_buried,
         array_3D_designIDs, array_3D_materialIDs,
-        nrows, ncols, xllcorner, yllcorner, cellsize, args.plate_size)
+        nrows, ncols, xllcorner, yllcorner, cellsize)
 
 ##    print(pcount_max)
 ##    print(np.amin(array_gpw))
 ##    from collections import Counter
 ##    print(Counter([float(x) for x in np.nditer(array_gpw)]))
+
+    return
+
+
+def color_as_nearby(args, array_2D_density, array_2D_materialIDs):
+
+    assert array_2D_density.shape == array_2D_materialIDs.shape
+
+    dist = 2
+    for x in range(dist,array_2D_density.shape[0]-dist):
+        for y in range(dist,array_2D_density.shape[1]-dist):
+            if array_2D_density[x][y] == 0:
+                continue
+            if array_2D_materialIDs[x][y] > 0:
+                continue
+            ## If not densely populated and not covered by language polygon
+            ## then delete. Because probably near coast or lake.
+            ## Including this deletion does not cause problems in Egypt.
+            ## todo: generate map with and without!!!
+            if array_2D_density[x][y] == 1:
+                if args.verbose:
+                    print('near zero density', x, y)
+                array_2D_density[x][y] = 0
+                continue
+            ## Count nearby materialIDs.
+            cnt = collections.Counter(
+                array_2D_materialIDs[x+dx][y+dy]
+                for dx in range(-dist, dist+1) for dy in range(-dist, dist+1)
+                )
+            del cnt[0]
+            if len(cnt) == 0:
+#                array_2D_materialIDs[x][y] = 119 # tmp!!!
+
+                continue
+            ## Set materialID to most frequently occuring nearby materialID.
+            array_2D_materialIDs[x][y] = cnt.most_common(1)[0][0]
 
     return
 
@@ -128,10 +217,18 @@ def argparser():
     parser.add_argument(
         '--zero', help = 'add zero values to average?', action='store_true')
 
+    parser.add_argument(
+        '--verbose', help = 'Be verbose?', action='store_true')
+
+    parser.add_argument(
+        '--density', help = 'Take max or mean of density grid?', choices=['max','mean'], default='max')
+
     parser.add_argument('--layers', default = 27, type=int)
 
     parser.add_argument('--norm', default = 'log', choices=[
         'log10', 'log2', 'unity', 'log']) # unity is feature scaling
+
+    parser.add_argument('--colors', required=True)
 
     args = parser.parse_args()
 
@@ -145,47 +242,42 @@ def argparser():
 
 def asc2np(args, affix1):
     
-##        array_gpw = read_gpw('afp00g.asc')
-        array_gpw = read_gpw('{}.asc'.format(affix))
+    array_gpw = read_gpw('{}.asc'.format(args.affix))
+    nrows2, ncols2 = np.shape(array_gpw)
 
-        array_2D_density = np.zeros((n, n))
-        array_2D_density_cnt = np.zeros((n, n))
+    assert np.shape(array_gpw)[0] > args.n
 
-        nrows2, ncols2 = np.shape(array_gpw)
+    den = args.n/fractions.gcd(ncols2, args.n)
+    num = int(ncols2/fractions.gcd(ncols2, args.n))
 
-        assert np.shape(array_gpw)[0] > n
+    array_2D_density = np.zeros((args.n, args.n))
+    array_2D_density_cnt = np.zeros((args.n, args.n))
 
-        den = n/fractions.gcd(ncols2, n)
-        num = int(ncols2/fractions.gcd(ncols2, n))
+    print('converting NASA array to LEGO array')
+    for x1 in range(args.n):
+        print('gpw2LEGO', x1, args.n)
+        for y1 in range(args.n):
+            l = []
+            for x2 in range(num):
+                for y2 in range(num):
+                    x3 = int((x1*num+x2)/den)
+                    y3 = int((y1*num+y2)/den)
+##                    array_2D_density[x1][y1] += array_gpw[x3][y3]
+##                    array_2D_density[x1][y1] += array_gpw[x3][y3]
+                    l.append(array_gpw[x3][y3])
+                    if array_gpw[x3][y3] > 0:
+                        array_2D_density_cnt[x1][y1] += 1
+            if l.count(0) >= 0 and sum(l) > 0:
+                if y1 == 65 and x1 > 95:
+                    print(x1, y1, l.count(0), 'mean', sum(l)/len(l), 'max', max(l), sum(l), sum(sorted(l)[1:-1]), l)
+            array_2D_density[x1][y1] = max(l)
 
-        print('converting NASA array to LEGO array')
-        for x1 in range(n):
-            print('gpw2LEGO', x1, n)
-            for y1 in range(n):
-    ##            print(x1,y1)
-                for x2 in range(num):
-                    for y2 in range(num):
-    ##                    x3 = int((nrows2*x1+x2)/n)
-    ##                    y3 = int((ncols2*y1+y2)/n)
-                        x3 = int((x1*num+x2)/den)
-                        y3 = int((y1*num+y2)/den)
-                        array_2D_density[x1][y1] += array_gpw[x3][y3]
-                        if array_gpw[x3][y3] > 0:
-                            array_2D_density_cnt[x1][y1] += 1
+    np.save(affix1, array_2D_density)
 
-        if not zero:
-            for row in range(n):
-                for col in range(n):
-                    if array_2D_density[row][col] == 0:
-                        continue
-                    array_2D_density[row][col] /= array_2D_density_cnt[row][col]
+    del array_gpw
+    del array_2D_density_cnt
 
-        np.save(affix1, array_2D_density)
-
-        del array_gpw
-        del array_2D_density_cnt
-
-        return array_2D_density
+    return array_2D_density
 
 
 def find_connected_exposed(
@@ -198,7 +290,6 @@ def find_connected_exposed(
 
     array_3D_materialIDs = np.zeros(np.shape(array_3D_designIDs), int)
 
-    d_len2designIDs = {1: 3024, 2: 3023, 3: 3623, 4: 3710, 6: 3666, 8: 3460}
     max_len = max(d_len2designIDs.keys())
 
     for layer in range(layers):
@@ -217,7 +308,7 @@ def find_connected_exposed(
             continue ## tmp!!! tmp2!!! sep13
         for i in range(n):
             seq = []
-            d_colors = {}
+##            d_colors = {}
             for j in range(n):
                 row = i*irow+j*jrow
                 col = i*icol+j*jcol
@@ -249,14 +340,6 @@ def find_connected_exposed(
 ##                    seq += [color]
                 ## Continue loop over j.
                 continue
-##            if layer >=15 and col == 182:
-##                print(layer)
-##                print(seq)
-##                print(array_2D_materialIDs[98][col])
-##                print(array_2D_buried[98][col])
-##                print(array_2D_density[98][col])
-##                print(array_3D_designIDs[layer][98][col])
-##                stop
             ## no bricks along line
             if seq == n*['x']:
                 continue
@@ -367,7 +450,7 @@ def append_designID_materialID(
         col = i*icol+(pos+j)*jcol
         ## replace Southern plate
         ## replace Eastern plate
-        if layer % 2 == 1 and j == 0:  ## sep13
+        if layer % 2 == 1 and j == 0:  ## sep13 tmp!!!
             array_3D_designIDs[layer][row][col] = designID
             array_3D_materialIDs[layer][row][col] = materialID
         elif j == length-1:
@@ -473,36 +556,32 @@ def find_consecutive(seq, repeat):
     return seq2
 
 
-def find_connected_buried(n, array_2D_buried, layers, plate_size):
+def find_connected_buried(args, array_2D_buried):
 
     print('finding connected 1x1 plates and replacing them with larger plates')
 
+    n = args.n
+    layers = args.layers
+    plate_size = args.plate_size
+
     ## DO A WHILE LOOP UNTIL area_max IS EMPTY!!!
-    ## TODO: FIRST LOOP 3 LAYERS (BRICK) AND THEN 1 LAYER (PLATES) - 12x24 brick...
+
     ## DO NOT CENTER BRICK IN A DIMENSION
     ## IF FACING OTHER PLATE IN THAT DIRECTION - ie IF AT EDGE
+    ## 2015may20 - WTF did I mean by that, when I wrote it???
 
+    ## 3D array with design IDs at each 3D coordinate
     array_3D_designIDs = np.zeros((layers, n, n), int)
 
-    d_designIDs = {16: 91405, 8: 41539, 6: 3958, 4: 3031}
-
-##    array_2D_density = np.array([
-##    [0,0,0,0,0,0,1,1,0],[0,0,0,0,0,1,1,1,1],[0,0,1,1,1,1,1,1,1]])
-##    layers = 1
-##    array_2D_buried = array_2D_density
-##    n1 = np.shape(array_2D_density)[0]
-##    n2 = np.shape(array_2D_density)[1]
-
-    ## loop from North to South
+    ## loop baseplates from North to South
     for row1 in range(int(n/plate_size)):
-        if False: ##sep20
-            continue ## tmp!!! sep13
-        ## loop from West to East
+        ## loop baseplates from West to East
         for col1 in range(int(n/plate_size)):
-            if row1 != 2 or col1 != 3: continue ## tmp!!! sep13
-            print(row1, col1)
+            if args.verbose:
+                print('find_connected_buried', row1, col1)
             area_max = {layer: {'area': 0} for layer in range(layers)}
             i = -1
+            ## Loop while there are areas to be filled.
             while area_max:
                 i += 1
                 h = np.zeros((layers, plate_size, plate_size), int)  # heights
@@ -621,10 +700,7 @@ def find_connected_buried(n, array_2D_buried, layers, plate_size):
                             row = row_pos-row_major*size
                             col = col_pos-col_major*size
                             ## insert large plate
-                            if layer % 2 == 1 and 2+2==5:  ## sep13
-                                array_3D_designIDs[layer][row-size+1][col] = d_designIDs[size]
-                            else:
-                                array_3D_designIDs[layer][row][col] = d_designIDs[size]
+                            array_3D_designIDs[layer][row][col] = d_designIDs[size]
                             ## Continue loop over col_major
                             continue
                         ## Continue loop over row_major.
@@ -663,6 +739,12 @@ def find_buried(array_2D_density, layers):
             z = min([array_2D_density[row+x][col+y]
                      for x in range(-1, 2) for y in range(-1, 2)])
             if z >= 1:
+##                if row//48 == 2 and col//48 == 3:
+##                    if row == 143 and col == 184:
+##                        for x in range(-1, 2):
+##                            for y in range(-1, 2):
+##                                print(x,y,array_2D_density[row+x][col+y])
+##                        stop
                 ## update array
                 array_2D_buried[row][col] = z-1
 
@@ -698,7 +780,7 @@ def normalize(a, args):
         a = np.log10(np.divide(a, amax/(10**layers)))
     elif args.norm == 'log':
         amax = np.amax(a)
-        amin = np.amin(a[np.nonzero(a)])
+##        amin = np.amin(a[np.nonzero(a)])
 ##        cnt = 0
 ##        sumx = 0
 ##        sumxx = 0
@@ -747,131 +829,23 @@ def normalize(a, args):
     return a
 
 
-def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
+def json2array(args, nrows, ncols, xllcorner, yllcorner, cellsize):
 
     print('Converting GeoJSON polygons to array of LEGO color points')
 
-    ## colors not for sale via Pick-a-Brick:
-    ## 2 light gray / grey
-    ## 27 dark gray / dark grey
+    d_colors = {}
+    with open(args.colors) as f:
+        for line in f:
+            if line == '\n':
+                continue
+            if line[0] == '#':
+                continue
+            l = line.split('\t')
+            d_colors[l[0]] = int(l[1])
 
-    ## only available via service.lego.com/en-gb/replacementparts
-    ## 138 dark tan / sand yellow
-    ## 222 bright pink / light purple
-    ## 119 lime / bright yellowish green
-    ## 102 medium blue / medium blue
-    ## 141 dark green / earth green
-    ## 330 olive green / olive green
-    ## 154 dark red / new dark red
+    print(d_colors)
 
-    ## currently out of stock
-    ## 268 dark purple / medium lilac
-
-    ## possibly discontinued
-    ## 151 sand green / sand green
-    ## 321 dark azure / dark azur
-    ## 25 brown / earth orange
-    ## 135 sand blue
-
-    ## available via PAB but not used
-    ## 140 earth blue
-
-    ## Official LDD/PAB color IDs
-    d_colors = {
-        ## available via PAB
-        'Bantu': 1,  # White (51380)
-        'Bantu / Bantu': 1,
-        'Semitic: Arab, Bedouin': 194,  # Light Bluish Gray (47289)
-        'Cushitic': 192,  # Reddish Brown (39398)
-        'Chadic': 5,  # Tan (74477) / Brick Yellow
-        ## not available via PAB
-        'Saharan': 2,  # Light Gray (14325) / Grey
-        'Saharan / Nilotic': 2,
-        'Saharan / Cushitic': 2,
-        'Chadic / Cushitic': 2,
-        ## available via PAB
-        'Nilotic': 106,  # Orange (35644)
-        'Nilotic / Bantu': 106,
-        'Nilotic / Bantoid': 106,
-        'Chari-Nile / Nilotic': 106,
-        ## not available via PAB
-        'Berber': 138,  # Dark Tan (32656) / Sand Yellow
-        'Northern Mande': 222,  # Bright Pink (34034) / Light Purple
-        ## available via PAB
-        'Voltaic': 28,  # Green (39516) / Dark Green
-        'Kru': 26,  # Black (35741)
-        'Adamawa-Ubangian': 23,  # Blue (70095) / Bright Blue
-        'Bantoid': 21,  # Red (67551) / Bright Red
-        'Chari-Nile': 199,  # Dark Bluish Gray (43621) / Dark Stone Grey (4210719)
-        'Adamawa-Ubangian / Chari-Nile': 199,
-        'West Atlantic': 24,  # Yellow (67832)
-        ## not available via PAB
-        'Fufulde': 119,  # Lime (26976) / Bright Yellowish Green
-        'Chadic / Fufulde': 119,
-        'Fufulde / Adamawa-Ubangia':  119,
-        'San': 151,  # Sand Green (6989) / Sand Green
-        'Songhai': 102,  # Medium Blue (17453) / Medium Blue
-        'Gbaya': 141,  # Dark Green (10885) / Earth Green
-        'Kwa': 321,  # Dark Azure (23275) / Dark Azur (Ivory Coast)
-        'Maban': 268,  # Dark Purple (21162) / Medium Lilac
-        'Southern Mande': 330,  # Olive Green (12496) / Olive Green (Ivory Coast)
-        'Kordofanian': 27,  # Dark Gray (7760)
-        'Sandawe': 154,  # Dark Red (7042) / New Dark Red
-        'Khoi:  Nama, Bergdama': 25,  # Brown (5452) / Earth Orange
-        'Fur': 135,  # Sand Blue (4126)
-        }
-
-    d_colors = {
-        ## Afro-Asiatic
-        ## Yellow
-        'Semitic: Arab, Bedouin': 24,
-        'Cushitic': 24,
-        'Chadic': 24,
-        'Berber': 24,
-        'Chadic / Cushitic': 24,
-        'Chadic / Fufulde': 24,
-        ## Nilo-Saharan (Berta, *Fur*, Gumuz, Koman, Kuliak, Kunama, *Maban*,
-        ## Saharan, Songhay, Central Sudanic, Eastern Sudanic)
-        ## Red
-        ## Nilotic (E: Turkana, Maasai; S: Kalenjin, Datooga; W: Luo; Burun)
-        'Saharan': 21,
-        'Saharan / Nilotic': 21,
-        'Saharan / Cushitic': 21,
-        'Nilotic': 21,
-        'Nilotic / Bantu': 21,
-        'Nilotic / Bantoid': 21,
-        'Chari-Nile / Nilotic': 21,
-        'Maban': 21,
-        'Fur': 21,
-        ## Niger-Congo A (not Bantu)
-        ## Blue
-        'Northern Mande': 23,
-        'Voltaic': 23,
-        'Kru': 23,
-        'Adamawa-Ubangian': 23,
-        'Bantoid': 23,
-        'Chari-Nile': 23,
-        'Adamawa-Ubangian / Chari-Nile': 23,
-        'West Atlantic': 23,
-        'Fufulde': 23,
-        'Fufulde / Adamawa-Ubangia':  23,
-        'Songhai': 23,
-        'Kwa': 23,
-        'Southern Mande': 23,
-        'Kordofanian': 23,
-        ## Niger-Congo B (Bantu)
-        ## Green
-        'Bantu': 28,
-        'Bantu / Bantu': 28,
-        'Gbaya': 28,
-        ## Khoisan languages / Khoe languages
-        ## Orange (do Tan instead?! more common!!!)
-        'San': 106,
-        'Sandawe': 106,
-        'Khoi:  Nama, Bergdama': 106,
-        }
-
-    array_2D_materialIDs = np.zeros((n, n), int)
+    array_2D_materialIDs = np.zeros((args.n, args.n), int)
 
     with open('etnicity_felix.json') as f:
         js = json.load(f)
@@ -885,7 +859,8 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
             color = d_colors[family]
         except KeyError:
             color = 324  # medium lavender (e.g. Afrikaans)
-##            print(family, feature['properties']['ETHNICITY'])
+            color = 26 # black
+            print(family, feature['properties']['ETHNICITY'])
         if family in ('',):
 ##            print(
 ##            feature['properties'], polygon.bounds, feature['id'],
@@ -896,21 +871,26 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
 ##                if key == 'geometry': continue
 ##                print(key, feature[key])
         min_lon, min_lat, max_lon, max_lat = polygon.bounds
-        _den = cellsize*max(nrows,ncols)
-        row_min = n*(min_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
-        row_max = n*(max_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
-        col_min = n*(min_lon-xllcorner)/_den-0.5
-        col_max = n*(max_lon-xllcorner)/_den-0.5
+        _den = cellsize * max(nrows, ncols)
+        row_min = args.n*(min_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
+        row_max = args.n*(max_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
+        col_min = args.n*(min_lon-xllcorner)/_den-0.5
+        col_max = args.n*(max_lon-xllcorner)/_den-0.5
         within = False
         ## Afrikaans
-        if family == 'Miscellaneous / Unclassified' and max_lat < -20:
-            family = 'Afrikaans'
-            color = 140  # earth blue
-            color = 5  # tan
-            color = 119  # lime
+        if family == 'Miscellaneous / Unclassified':
+            if max_lat < -20:
+                family = 'Afrikaans'
+                color = 140  # earth blue
+                color = 5  # tan
+                color = 119  # lime
+            else:
+                print(min_lon, min_lat, max_lon, max_lat)
+        elif not family in d_colors.keys():
+            print(family, min_lon, min_lat, max_lon, max_lat)
         ## loop from South to North
         for row in range(math.floor(row_min), math.ceil(row_max)):
-            latitude = cellsize*(row+0.5)*max(nrows, ncols)/n+yllcorner
+            latitude = cellsize*(row+0.5)*max(nrows, ncols)/args.n+yllcorner
             latitude -= cellsize*(ncols-nrows)/2
             ## Bantu languages in Angola incorrectly assigned to the Kru family
             if family == 'Kru' and latitude < 0:
@@ -918,7 +898,7 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
                 color = d_colors[family]
             ## loop from West to East
             for col in range(math.floor(col_min), math.ceil(col_max)):
-                longitude = cellsize*(col+0.5)*max(nrows, ncols)/n+xllcorner
+                longitude = cellsize*(col+0.5)*max(nrows, ncols)/args.n+xllcorner
                 ## incorrectly assigned to the Maban family
                 if family == 'Maban' and longitude > 30:  # min_lon > 30
                     within = True
@@ -926,7 +906,7 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
                 ## don't change from non-miscellaneous to miscellanous
                 if (
                     family in ('', 'Miscellaneous / Unclassified') and
-                    array_2D_materialIDs[n-row][col]):
+                    array_2D_materialIDs[args.n-row][col]):
                     within = True
                     continue
 ##                ## color with color of largest nearby stack
@@ -943,16 +923,16 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
                 ## solve the point-in-polygen problem
                 if polygon.contains(point):
                     within = True
-                    array_2D_materialIDs[n-row][col] = color
+                    array_2D_materialIDs[args.n-row][col] = color
                     pass
                 ## polygon might not contain point rounded to nearest grid value
                 ## hence add manually
                 elif row_max-row_min < 2.5 or col_max-col_min < 2.5:
                     within = True
                     ## don't change color if not within polygon
-                    if not array_2D_materialIDs[n-row][col] == 0:
+                    if not array_2D_materialIDs[args.n-row][col] == 0:
                         continue
-                    array_2D_materialIDs[n-row][col] = color
+                    array_2D_materialIDs[args.n-row][col] = color
                     pass
                 ## continue loop over cols
                 continue
@@ -980,9 +960,12 @@ def json2array(n, nrows, ncols, xllcorner, yllcorner, cellsize):
 
 
 def numpy2lxfml(
+    args,
     array_2D_density, lxfml, array_2D_materialIDs, array_2D_buried,
     array_3D_designIDs, array_3D_materialIDs,
-    nrows, ncols, xllcorner, yllcorner, cellsize, plate_size):
+    nrows, ncols, xllcorner, yllcorner, cellsize):
+
+    plate_size = args.plate_size
 
 ## todo: minimize indentation level and length of this function
 
@@ -997,116 +980,86 @@ def numpy2lxfml(
     ## open file
     with open(lxfml, 'w') as f:
         f.write(head('Africa'))
+##        f.write('<<BuildingInstructions>\n')
+##        f.write('<BuildingInstruction>\n')
         ## loop from North to South
         for row1 in range(int(n/plate_size)):
             ## loop from West to East
             for col1 in range(int(n/plate_size)):
+                if args.verbose:
+                    print('numpy2lxfml, row', row1, col1)
                 with open(
                     '{}.{}.{}.lxfml'.format(
                         lxfml[:-len('.lxfml')], row1, col1), 'w') as lxfml_plate:
                     lxfml_plate.write(head('Africa.{}.{}'.format(row1, col1)))
-                    for row2 in range(plate_size):
-                        row = row1*plate_size+row2
-                        dy = cellsize*(row+0.5)*max(nrows, ncols)/n
-                        dy -= -cellsize*(ncols-nrows)/2
-                        latitude = yllcorner+dy
-                        if row % 10 == 0:
-                            print('numpy2lxfml, row', row, 'of', n-1)
-                        for col2 in range(plate_size):
-                            col = col1*plate_size+col2
-                            dx = cellsize*(col+0.5)*max(nrows, ncols)/n
-                            longitude = xllcorner+dx
-##                print(row,col,latitude,longitude)
-##                N = a/math.sqrt(1-e_squared*math.sin(latitude)**2)
-####                x = (N+h)*math.cos(latitude)*math.cos(longitude)
-####                y = (N+h)*math.cos(latitude)*math.sin(longitude)
-##                z = (N*(1-e_squared)+h)*math.sin(latitude)
-##                z /= 1000  # m to km
-##                cm_per_degree = 240*0.8/90
-##                km_per_degree = 40076/360
-##                bricks_per_cm = 1/0.96
-##                z /= km_per_degree  # km to degree
-##                z *= cm_per_degree  # degree to cm
-##                z *= bricks_per_cm  # cm to bricks
-##                z = abs(int(z))
-##                if col == 0:
-##                    print(row,col,latitude,z)
-
-                            ## skip parts of array not covered by GeoJSON array
-                            ## DO THIS BEFORE CONNECTING BRICKS!!!
-                            ## INSTEAD COLOR AS NEIGBOUR!!
-                            ## OR USE ALL 4 CORNERS INSTEAD OF JUST CENTER!!!
-                            if array_2D_materialIDs[row][col] == 0:
-                                continue  # tmp!!!
-
-                            ## make sure bricks are present
-                            ## for areas covered by language family polygons
-                            if all([
-                                array_2D_materialIDs[row][col] > 0,
-                                array_2D_density[row][col] == 0]):
-                                array_2D_density[row][col] = 1
-
-            ##                print(row,col,latitude,longitude)
-
-                            for y in range(int(array_2D_density[row][col])):
-                                if array_3D_materialIDs[y][row][col] != 0:
-                                    materialID = array_3D_materialIDs[y][row][col]
-                                ## white/buried
-                                elif y < array_2D_buried[row][col]:
-                                    materialID = 1
-                                ## exposed/colored
-                                else:
-                                    materialID = array_2D_materialIDs[row][col]
-                                ## 1x1 plate
-                                if array_3D_designIDs[y][row][col] == 0:
-                                    designID = 3024  # 1x1 plate
-                                ## larger plate
-                                else:
-                                    ## empty space for larger plate
-                                    if array_3D_designIDs[y][row][col] == -1:
-                                        continue
-                                    ## larger plate
-                                    else:
-                                        designID = array_3D_designIDs[y][row][col]
-                                        pass
-                                    pass
-
-            ##                    ## replace plates with bricks
-            ##                    if array_2D_density[row][col] >= 3*(y//3)+3:
-            ##                        if y%3 == 0:
-            ##                            designID = 3005  # 1x1 brick
-            ##                        else:
-            ##                            continue
-            ##                    if array_2D_buried[row][col] >= 3*(y//3)+3:
-            ##                        if y%3 == 0:
-            ##                            designID = 3005  # 1x1 brick
-            ##                        else:
-            ##                            continue
-
-            ##                    if array_2D_buried[row][col] >= y:
-            ##                        materialID = 1
-            ##                    else:
-            ##                        materialID = array_2D_materialIDs[row][col]
-
-                                line = format_line(
-                                    refID, designID, materialID, row, y, col)
-                                f.write(line)
-                                lxfml_plate.write(line)
-                                refID += 1
-                                ## continue loop over ty
-                                continue
-                            ## continue loop over col2
-                            continue
-                        ## continue loop over row2
-                        continue
-                    ## add grey 48x48 base plate
+##                    lxfml_plate.write('<BuildingInstructions>\n')
+##                    lxfml_plate.write('<BuildingInstruction>\n')
+                    ## Add grey 48x48 base plate.
                     assert plate_size == 48
-                    line = format_line(refID, 4186, 194, row, 0, col)
+                    line = format_line(
+                        refID, designID_baseplate, materialID_grey,
+                        row1*plate_size, 0, col1*plate_size)
                     f.write(line)
                     lxfml_plate.write(line)
+                    ## Write first step.
+                    steps = '      <Step>\n'
+                    steps += '        <PartRef partRefID="{}"/>\n'.format(refID)
+                    steps += '      </Step>\n'
+                    ## Increment refID.
                     refID += 1
+                    ## Loop over y first to be able do BuildingInstruction Steps.
+                    ## This is obviously slower than looping over
+                    ## for y in range(int(array_2D_density[row][col])):
+                    for y in range(args.layers):
+                        ## Building step for layer not yet initiated.
+                        bool_init_step = False
+##                        lxfml_plate.write('<Step>\n')
+##                        f.write('<Step>\n')
+                        ## Loop over rows and cols of base plate.
+                        for row2 in range(plate_size):
+                            row = row1*plate_size+row2
+                            ## calculate latitude
+                            dy = cellsize*(row+0.5)*max(nrows, ncols)/n
+                            dy -= cellsize*(ncols-nrows)/2
+                            latitude = -yllcorner-dy
+                            for col2 in range(plate_size):
+                                col = col1*plate_size+col2
+                                ## calculatelate longitude
+                                dx = cellsize*(col+0.5)*max(nrows, ncols)/n
+                                longitude = xllcorner+dx
+                                ## Generate line for coordinate.
+                                line = generate_line(
+                                    y, row, col, refID, latitude, longitude,
+                                    array_2D_materialIDs, array_2D_density,
+                                    array_2D_buried,
+                                    array_3D_designIDs, array_3D_materialIDs,
+                                    )
+                                if line:
+                                    f.write(line)
+                                    lxfml_plate.write(line)
+                                    if not bool_init_step:
+                                        ## Initiate building step for layer.
+                                        steps += '      <Step>\n'
+                                        bool_init_step = True
+                                    steps += '        <PartRef partRefID="{}"/>\n'.format(
+                                        refID)
+                                    ## Increment refID after appending step.
+                                    refID += 1
+                                ## continue loop over col2
+                                continue
+                            ## continue loop over row2
+                            continue
+##                        lxfml_plate.write('</Step>\n')
+##                        f.write('</Step>\n')
+                        ## Terminate building step if it was initiated.
+                        if bool_init_step:
+                            steps += '      </Step>\n'
+                        ## continue loop over ty
+                        continue
                     ## add tail to plate lxfml file
-                    lxfml_plate.write(tail())
+##                    lxfml_plate.write('</BuildingInstruction>')
+##                    lxfml_plate.write('</BuildingInstructions>')
+                    lxfml_plate.write(tail(steps))
                     ## close plate lxfml file
                     lxfml_plate.close()
                     pass
@@ -1114,8 +1067,10 @@ def numpy2lxfml(
                 continue
             ## continue loop over tx
             continue
+##        f.write('</BuildingInstruction>')
+##        f.write('</BuildingInstructions>')
         ## add tail to lxfml file
-        f.write(tail())
+        f.write(tail(''))
         ## close file
         f.close()
         pass
@@ -1123,26 +1078,117 @@ def numpy2lxfml(
     return
 
 
+def generate_line(
+    y, row, col, refID, latitude, longitude,
+    array_2D_materialIDs, array_2D_density, array_2D_buried,
+    array_3D_designIDs, array_3D_materialIDs):
+
+    if y >= array_2D_density[row][col]:
+        return None
+
+    ## skip parts of array not covered by GeoJSON array
+    ## DO THIS BEFORE CONNECTING BRICKS!!!
+    ## INSTEAD COLOR AS NEIGBOUR!!
+    ## OR USE ALL 4 CORNERS INSTEAD OF JUST CENTER!!!
+    ## Skip ocean.
+    if array_2D_materialIDs[row][col] == 0:
+        return None
+
+    ## Make sure bricks are present
+    ## for areas covered by language family polygons.
+    ## Creates low density at coast.
+    ## So only do this for the Eastern Desert of Egypt.
+    ## https://en.wikipedia.org/wiki/List_of_tripoints
+    ## https://en.wikipedia.org/wiki/Geography_of_Egypt#Extreme_points
+    ## https://en.wikipedia.org/wiki/22nd_parallel_north
+    ## https://en.wikipedia.org/wiki/Bir_Tawil
+    ## Egypt, Sudan, Libya tripoint
+    tripoint_SW_lat = 22
+    tripoint_SW_lon = 25
+    ## Egypt, Palestine/Gaza, Israel tripoint
+    tripoint_NE_lat = 31.216667
+    tripoint_NE_lon = 34.266667
+    ## https://en.wikipedia.org/wiki/List_of_countries_by_easternmost_point
+    easternmost_lon = 35.75
+    ## Language polygon, but no population density.
+    if all([
+        array_2D_materialIDs[row][col] > 0,
+        array_2D_density[row][col] == 0,]):
+        ## todo: generate map with and without!!!
+        if all([
+            latitude > tripoint_SW_lat,
+            longitude > tripoint_SW_lon,
+            latitude < tripoint_NE_lat,
+            longitude < easternmost_lon,
+            ]):
+            print(latitude, longitude, row, col)
+            array_2D_density[row][col] = 1
+        else:
+            print('tmp skip', row, col, latitude, longitude)
+            return None
+
+##                print(row,col,latitude,longitude)
+
+    if array_3D_materialIDs[y][row][col] != 0:
+        materialID = array_3D_materialIDs[y][row][col]
+    ## white/buried
+    elif y < array_2D_buried[row][col]:
+        materialID = 1
+    ## exposed/colored
+    else:
+        materialID = array_2D_materialIDs[row][col]
+    ## 1x1 plate
+    if array_3D_designIDs[y][row][col] == 0:
+        designID = 3024  # 1x1 plate
+    ## larger plate
+    else:
+        ## empty space for larger plate
+        if array_3D_designIDs[y][row][col] == -1:
+            return None
+        ## larger plate
+        else:
+            designID = array_3D_designIDs[y][row][col]
+            pass
+        pass
+
+    line = format_line(
+        refID, designID, materialID, row, y, col)
+
+    return line
+
+
 def format_line(refID, designID, materialID, row, y, col):
+
+    ## LEGO dimensions
+    ## http://upload.wikimedia.org/wikipedia/commons/1/1a/Lego_dimensions.svg
+    P = 0.8  # cm
+    h = 0.32  # cm
 
     line = '        <Part'
     line += ' refID="{0}"'.format(refID)
     line += ' designID="{0}"'.format(designID)
     line += ' materialID="{0}"'.format(materialID)
     line += ' itemNos="{0}{1}"'.format(designID, materialID)
-    if y % 2 == 1 and designID != 4186:  ## sep13
+    designID_baseplate = 4186
+    ## rotate / rotation
+    if y % 2 == 1 and designID != designID_baseplate:  ## 2014sep13 2015may20
 ##        line += ' angle="0" ax="0" ay="1" az="0"'
         line += ' angle="90" ax="0" ay="1" az="0"' ## tmp!!! test!!! East to West (from same point as S/N)
+        dtx = P * (d_designIDs2dim[designID]['dim1']-1)
+        dtz = 0
 ##        line += ' angle="90" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
 ##        line += ' angle="270" ax="0" ay="1" az="0"' ## tmp!!! test!!! East to West (from same point as S/N)
 ##        line += ' angle="270" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
 ##        line += ' angle="0" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
     else:
         line += ' angle="0" ax="0" ay="1" az="0"'
-    line += ' tx="{0:.1f}"'.format(row*-0.8)
-    line += ' ty="{0:.2f}"'.format(y*0.32)
-##                    line += ' ty="{0}"'.format((y-z)*0.32)
-    line += ' tz="{0:.1f}"'.format(col*0.8)
+        dtx = 0
+        dtz = 0
+##    line += ' tx="{0:.1f}"'.format(row*-P)
+    line += ' tx="{0:.1f}"'.format(row*-P + dtx)
+    line += ' ty="{0:.2f}"'.format(y*h)
+##                    line += ' ty="{0}"'.format((y-z)*h)
+    line += ' tz="{0:.1f}"'.format(col*P + dtz)
     line += '/>\n'
 
     return line
@@ -1169,17 +1215,20 @@ def head(name):
     return s
 
 
-def tail():
+def tail(steps):
 
 #    ty += 0.32 ## per plate in height
     s = '''\
-     </Group>
+      </Group>
     </Model>
   </Scene>
   <BuildingInstructions>
+    <BuildingInstruction>
+{}
+    </BuildingInstruction>
   </BuildingInstructions>
 </LXFML>
-'''
+'''.format(steps.rstrip())
 
     return s
 
@@ -1208,88 +1257,15 @@ def read_gpw(file_gpw):
         x2 = (max(nrows, ncols)+nrows)/2
         for row in range(max(nrows, ncols)):
 ##            print(row)
-            latitude = yllcorner+(nrows-row+x1-.5)*2.5/60
+##            latitude = yllcorner+(nrows-row+x1-.5)*2.5/60
             if row >= x1 and row < x2:
                 cols = f.readline().rstrip().split()
                 pass
             else:
                 cols = ['0']*ncols
-            N, W = '13.146,43.271'.split(',')
-            N = float(N)
-            W = float(W)
-            Ndelta = 0.02
-            Wdelta = 0.02
-            Ndelta = 0.2
-            Wdelta = 0.2
-            if latitude < N+Ndelta and latitude > N-Ndelta:
-                print()
-##                print(latitude,longitude,cols)
+
             for col, s in enumerate(cols):
-                longitude = xllcorner+(col+.5)*2.5/60
-##                if False: pass
-##                ## https://en.wikipedia.org/wiki/Geography_of_Africa#Extreme_points
-##                ## North, Iles des Chiens, Tunisia
-##                elif latitude > 37+32/60:
-##                    s = 0
-##                ## South, Cape Agulhas, South Africa
-##                elif latitude < -34-51/60-15/3600:
-##                    s = 0
-##                ## North, Cape Blanc / Ras ben Sakka, Tunisia
-##                elif latitude > 37+21/60:
-##                    s = 0
-##                ## West, Pointe des Almadies, Senegal
-##                elif longitude < -17-53/60:
-##                    s = 0
-##                ## East, Ras Hafun / Cape Guardafui, Somalia
-##                elif longitude > 51+27/60+52/3600:
-##                    s = 0
-##                ## Mediterranean (Pantelleria, Lampedisa, Malta, Crete,
-##                ## Gavdos, Akrotiri, Italy, Greece, Turkey, Cyprus)
-##                ## https://en.wikipedia.org/wiki/Extreme_points_of_Europe
-##                elif col >= 998 and latitude > 30+8/60+43/3600:
-##                    s = 0
-##                ## Mediterranean
-##                elif col >= 675 and col <= 985 and row <= 204+(col-675)*(169-204)/(985-675):
-##                    s = 0
-##                ## Strait of Gibraltar (incl. Punta de Tarifa)
-##                elif col >= 584 and col <= 675 and row <= 217+(col-584)*(204-217)/(675-584):
-##                    s = 0
-##                elif col == 591 and row <= 213: s = x  # Punta de Europa
-##                ## Israel/Egypt Border
-##                ## do more accurate slope with more accurate coordinates
-##                ## and then convert to grid
-##                elif row >= 328 and row <= 372 and col > 1541+(row-328)/((372-328)/(1557-1541)):
-##                    s = 0
-##                ## Middle East (from South to North)
-##                ## Gulf of Aqaba (Tiran Island ignored)
-##                elif row >= 372 and row <= 407 and col > 1558+(row-372)/((406-372)/(1548-1558)):
-##                    s = 0
-##                elif row == 372 and col >= 1559: s = 0  # Eifat/Aqaba/Jordan/Israel
-##                elif row == 410 and col >= 1566: s = 0
-##                ## Red Sea (Hanish Islands ignored)
-##                elif (
-##                    row <= 730 and row >= 411 and
-##                    col > 1706+(row-689)/((428-689)/(1555-1706)):
-##                    s = 0
-##                ## Yemen
-##                elif row == 731 and col >= 1750: s = 0
-##                elif row == 740 and col >= 1754: s = 0
-##                elif row == 745 and col >= 1755: s = 0
-##                elif row == 748 and col >= 1757: s = 0
-##                elif row == 758 and col >= 1758: s = 0
-##                elif row == 764 and col >= 1758: s = 0  # 13.146,43.271
-##                elif row == 765 and col >= 1759: s = 0  # 13.104,43.312
-##                elif row == 766 and col >= 1760: s = 0  # 13.062,43.354
-##                elif row == 767 and col >= 1760: s = 0  # 13.021,43.354
-##                elif row == 768 and col >= 1761: s = 0  # 12.979,43.396
-##                elif row == 769 and col >= 1764: s = 0  # 12.938,43.521
-##                elif row == 770 and col >= 1762: s = 0  # 12.896,43.438
-##                elif row == 771 and col >= 1762: s = 0  # 12.854,43.438
-##                elif row == 772 and col >= 1763: s = 0  # 12.812,43.479
-##                elif row == 773 and col >= 1763: s = 0  # 12.771,43.479
-##                elif row == 774 and col >= 1763: s = 0  # 12.729,43.479
-##                elif row == 775 and col >= 1762: s = 0  # 12.688,43.438
-##                elif row == 776 and col >= 1761: s = 0  # 12.646,43.396 / Perim Island
+##                longitude = xllcorner+(col+.5)*2.5/60
 
                 if s == '0':
                     array_gpw[row][col] = 0
@@ -1297,17 +1273,6 @@ def read_gpw(file_gpw):
                     array_gpw[row][col] = 0
                 else:
                     array_gpw[row][col] = float(s)
-                if all(
-                    [
-                        latitude < N+Ndelta, latitude > N-Ndelta,
-                        longitude > W-Wdelta, longitude < W+Wdelta]):
-                    print(
-                        s, row, col, '{.3f},{.3f}'.format(latitude, longitude))
-
-##        ## first loop to parse values
-##        array_gpw = np.resize(
-##            np.fromstring(
-##                f.read().replace('\n',' '), sep= ' '), (nrows, ncols))
 
     return array_gpw
 
