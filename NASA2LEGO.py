@@ -130,7 +130,8 @@ def main():
     ## randomly appear and disappear, because the polygons are poorly defined.
 ##    a_2D_density = np.where(
 ##        a_2D_mIDs!=0, a_2D_density, 0)
-    color_as_nearby(args, a_2D_density, a_2D_mIDs)
+    ## Do this before finding buried plates.
+    a_2D_density, a_2D_mIDs = color_as_nearby(args, a_2D_density, a_2D_mIDs)
 
 ##    x = []
 ##    for row in range(240):
@@ -242,11 +243,60 @@ def color_as_nearby(args, a_2D_density, a_2D_mIDs):
 
     assert a_2D_density.shape == a_2D_mIDs.shape
 
-    dist = 2
+    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
+        '{}.asc'.format(args.affix))
+
+    ## http://en.wikipedia.org/wiki/List_of_countries_by_southernmost_point
+    ## http://en.wikipedia.org/wiki/List_of_countries_by_westernmost_point
+    Yemen_South = 12+7/60  # 12.66
+    Yemen_West = 41+42/60  # 43.12  # 43.42
+    Yemen_South1 = 12+(33.75-0.01)/60
+    Yemen_West1 = 43+(18.75-0.01)/60
+    Yemen_South2 = 13+(41.25-0.01)/60
+    Yemen_West2 = 42+(33.75-0.01)/60
+    Israel_South = 29.5
+    Israel_West = 34+17/60
+    Gaza_West = 34+15/60
+    ## http://en.wikipedia.org/wiki/Extreme_points_of_Spain
+    Spain_South = 36+0/60
+    Spain_East = -4.75  # -(3+19/60)
+    ## http://en.wikipedia.org/wiki/List_of_countries_by_easternmost_point
+    SaudiArabia_South = 16+5/60
+    SaudiArabia_South = 17+(3.75-0.01)/60
+    SaudiArabia_East = 40+(41.25-0.01)/60
+##    Sudan_East = 38+35/60
+    ## http://en.wikipedia.org/wiki/Sharm_el-Sheikh
+    Sharm_elSheikh_lon = 34+19/60  # Suez Canal East boundary
+    # http://en.wikipedia.org/wiki/Ras_Muhammad_National_Park
+    Sinai_South_lat = 27+43/60  # Gulf of Aqaba South boundary
+    Sinai_South_lon = 34+15/60  # Gulf of Aqaba West boundary
+    Egypt_South = 22
+    ## http://en.wikipedia.org/wiki/Suez
+    Suez_lat = 29+58/60  # Suez Canal North Boundary
+    Suez_lon = 32+33/60  # Suez Canal West Boundary
+    ## http://en.wikipedia.org/wiki/Safaga
+    Safaga_lat = 26+44/60  # Suez Canal South boundary
+
+    ## Canary Islands
+    ## http://en.wikipedia.org/wiki/Roque_del_Este
+    Canary_Islands_lon = -13-20/60
+
+    ## Strait of Sicily
+    Libya_N_lat = 33+10/60
+    Tunisia_E_lon = 11+35/60
+
+    dist = 3
     for x in range(dist, a_2D_density.shape[0]-dist):
+        row = x
+        lat = -cellsize*(row+0.5)*max(nrows, ncols)/args.n-yllcorner
+        lat += cellsize*(ncols-nrows)/2
         for z in range(dist, a_2D_density.shape[1]-dist):
+            col = z
+            lon = cellsize*(col+0.5)*max(nrows, ncols)/args.n+xllcorner
+            ## Popuation density is zero.
             if a_2D_density[x][z] == 0:
                 continue
+            ## Point is in language polygon.
             if a_2D_mIDs[x][z] > 0:
                 continue
             ## If not densely populated and not covered by language polygon
@@ -258,20 +308,118 @@ def color_as_nearby(args, a_2D_density, a_2D_mIDs):
                     print('near zero density', x, z)
                 a_2D_density[x][z] = 0
                 continue
+##            if lat > Yemen_South and lon > Israel_West:
+##                dist = 1
+##            else:
+##                dist = 2
             ## Count nearby materialIDs.
             cnt = collections.Counter(
                 a_2D_mIDs[x+dx][z+dz]
                 for dx in range(-dist, dist+1) for dz in range(-dist, dist+1)
                 )
+            ## Assign greater weight to most nearby.
+            cnt += collections.Counter(
+                a_2D_mIDs[x+dx][z+dz]
+                for dx in range(-1, 1+1) for dz in range(-1, 1+1)
+                for i in range(dist**2)
+                )
             del cnt[0]
+##            del cnt[119]  # tmp!!!
+##            del cnt[221]
+            ## No nearby polygons/colors.
             if len(cnt) == 0:
-#                a_2D_mIDs[x][y] = 119 # tmp!!!
-
+##                a_2D_mIDs[x][z] = 119 # tmp!!!
+                continue
+            ## No bricks in Yemen.
+##            if lat > Yemen_South and lon > Yemen_West:
+##                if args.verbose:
+##                    print('Yemen',x,z,lat,lon)
+##                a_2D_mIDs[x][z] = 221
+##                continue
+            ## Do not connect colors/polygons across the Red Sea.
+            if lat >= Yemen_South and lon >= Israel_West and a_2D_density[x+1][z] == 0:
+                a_2D_density[x][z] = 0
+##                a_2D_mIDs[x][z] = 221
+                continue
+            if lat >= Yemen_South1 and lon >= Yemen_West1:
+                if args.verbose:
+                    print('Yemen1',x,z,lat,lon)
+##                a_2D_mIDs[x][z] = 221
+                a_2D_density[x][z] = 0
+                continue
+            if lat >= Yemen_South2 and lon >= Yemen_West2:
+                if args.verbose:
+                    print('Yemen2',x,z,lat,lon)
+##                a_2D_mIDs[x][z] = 221
+                a_2D_density[x][z] = 0
+                continue
+            ## No bricks in Israel and Gaza.
+            if lat > Israel_South and lon > Gaza_West:
+                if args.verbose:
+                    print('Israel',x,z,lat,lon)
+##                a_2D_mIDs[x][z] = 221
+                a_2D_density[x][z] = 0
+                continue
+            ## No bricks in Saudi Arabia across the Red Sea.
+            if lat > SaudiArabia_South and lon > SaudiArabia_East:
+                if args.verbose:
+                    print('Saudi',x,z,lat,lon)
+##                a_2D_mIDs[x][z] = 221
+                a_2D_density[x][z] = 0
+                continue
+            ## No bricks in Saudi Arabia across the Gulf of Aqaba.
+            if all([
+                lat > Sinai_South_lat,
+                lon > Sinai_South_lon,
+                a_2D_density[x][z] < args.layers/3]):
+##                a_2D_mIDs[x][z] = 102  # medium blue
+                a_2D_density[x][z] = 0
+                continue
+            ## No bricks in Saudi Arabia across the Gulf of Aqaba.
+            if all([
+                lat > Egypt_South,
+                lon > Gaza_West,
+                any([a_2D_density[x][z-1] == 0, a_2D_density[x][z-2] == 0])]):
+##                a_2D_mIDs[x][z] = 221
+                a_2D_density[x][z] = 0
+                continue
+            ## No Bricks in Andalusia.
+            if lat > Spain_South and lon < Spain_East:
+##                a_2D_mIDs[x][z] = 221
+                a_2D_density[x][z] = 0
+                continue
+            ## No Bricks in Andalusia.
+            if lat > Spain_South and a_2D_density[x+1][z] == 0:
+##                a_2D_mIDs[x][z] = 221
+                a_2D_density[x][z] = 0
+                continue
+            ## Clear bricks in the Suez canal:
+            if all([
+                lat > Safaga_lat,
+                lat < Suez_lat,
+                lon > Suez_lon,
+##                lon < Sinai_South_lon,
+                lon < Sharm_elSheikh_lon,
+                a_2D_density[x][z] < args.layers/3]):
+##                a_2D_mIDs[x][z] = 268  # medium lilac
+                a_2D_density[x][z] = 0
+                continue
+##            ## Clear brick(s) in the Red Sea south of the Sinai peninsula.
+##            if latitutde > Safaga_lat and lat
+            ## Skip Canary Islands
+            if lon < Canary_Islands_lon and a_2D_mIDs[x][z+1] == 0:
+                a_2D_density[x][z] = 0
+                continue
+            ## No bricks in the strait of Sicily.
+            if lat > Libya_N_lat and lon > Tunisia_E_lon:
+                a_2D_density[x][z] = 0
                 continue
             ## Set materialID to most frequently occuring nearby materialID.
             a_2D_mIDs[x][z] = cnt.most_common(1)[0][0]
+##            a_2D_mIDs[x][z] = 5
+##            print(cnt.most_common(1)[0][0])
 
-    return
+    return a_2D_density, a_2D_mIDs
 
 
 def argparser():
