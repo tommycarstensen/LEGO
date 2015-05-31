@@ -39,6 +39,22 @@ d_plate2brick = {8: 93888, 6: 44237, 4: 3001}
 ##    6: ((0, 0, 44237), (0, 2, 44237),),
 ##    4: ((0, 0, 3001),),
 ##    }
+## Ubiquitous material IDs; i.e. 1x1 and 2x4 bricks available in PAB.
+ubiquitous = {
+    1,  # White
+    21,  # Red
+    23,  # Blue
+    24,  # Yellow
+    5,  # Tan
+    26,  # Black
+    28,  # Green
+    194,  # Stone Grey
+    199,  # Stone Grey
+    106,  # Orange
+    192,  # Reddish Brown
+    119,  # Lime
+    222,  # Light Purple / Light Pink
+    }
 
 materialID_buried = 1
 
@@ -161,7 +177,8 @@ def main():
 
     ## slow
     ## 0-(args.layers-1)
-    a_3D_dIDs = find_connected_buried_new(args, a_2D_buried)
+    a_3D_dIDs = find_connected_buried_new(
+        args, a_2D_buried, a_2D_density, a_2D_mIDs)
 
 ##    ##
 ##    a_3D_dIDs = find_connected_buried(
@@ -510,78 +527,96 @@ def find_connected_exposed(
 
     print('find connected exposed plates and remaining buried plates')
 
-    n1 = n2 = n = np.shape(a_2D_density)[0]
-
     a_3D_mIDs = np.zeros(np.shape(a_3D_dIDs), int)
 
     max_len = max(d_len2designIDs.keys())
 
     gap = 'x'
 
-    for layer in range(args.layers):
+    for layer in reversed(range(args.layers)):
         ## build plates horizontally and vertically in each layer
         if layer % 2 == 0:
-            irow = 1
-            jrow = 0
-            icol = 0
-            jcol = 1
-##            irow = 0
-##            jrow = 1
-##            icol = 1
-##            jcol = 0
-            continue  # tmp!!!
-            pass
-        else:
-            irow = 0
-            jrow = 1
-            icol = 1
-            jcol = 0
 ##            irow = 1
 ##            jrow = 0
 ##            icol = 0
 ##            jcol = 1
-            continue  # tmp!!!
+            irow = 0
+            jrow = 1
+            icol = 1
+            jcol = 0
+##            continue  # tmp!!!
             pass
-        for i in range(n):
-            seq = []
-##            d_colors = {}
-            for j in range(n):
-                row = i*irow+j*jrow
-                col = i*icol+j*jcol
-                ## Ocean or lake (or desert).
-                ## Or position is above structure.
-                if layer >= a_2D_density[row][col]:
-                    seq += [gap]
-                ## Already filled.
-                elif a_3D_dIDs[layer][row][col] != 0:
-                    seq += [gap]
-                ## Buried.
-                elif layer < a_2D_buried[row][col]:
-                    seq += [materialID_buried]
-                ## Not inside Felix2001 GeoJSON polygon
-                ## e.g. Spain and Saudi Arabia
-                elif a_2D_mIDs[row][col] == 0:
-                    seq += [gap]
-                else:
-                    seq += [int(a_2D_mIDs[row][col])]
-##                    materialID = a_2D_mIDs[row][col]
-##                    try:
-##                        color = d_colors[materialID]
-##                    except KeyError:
-##                        color = len(d_colors.keys())+1
-##                        d_colors[materialID] = color
-##                    seq += [color]
-                ## Continue loop over j.
+        else:
+##            irow = 0
+##            jrow = 1
+##            icol = 1
+##            jcol = 0
+            irow = 1
+            jrow = 0
+            icol = 0
+            jcol = 1
+##            continue  # tmp!!!
+            pass
+##        for x in range(2*48, 3*48):
+##            for y in range(1*48, 2*48):
+####        for y in range(1*48, 2*48):
+####            for x in range(2*48, 3*48):
+##                if a_2D_density[x][y] == 0:
+##                    continue
+##                print(x, y, a_2D_density[x][y], a_3D_mIDs[0][x][y], a_3D_dIDs[0][x][y])
+##        stooooop
+        ## loop baseplates from North to South
+        for row1 in range(args.n//args.plate_size):
+            ## loop baseplates from West to East
+            for col1 in range(args.n//args.plate_size):
+                for i in range(args.plate_size):
+                    seq = []
+        ##            d_colors = {}
+                    for j in range(args.plate_size):
+                        row = row1*args.plate_size + i*irow+j*jrow
+                        col = col1*args.plate_size + i*icol+j*jcol
+                        ## Ocean or lake (or desert).
+                        ## Or position is above structure.
+                        if layer >= a_2D_density[row][col]:
+                            seq += [gap]
+                        ## Already filled.
+                        elif a_3D_dIDs[layer][row][col] != 0:
+                            seq += [gap]
+                        ## Buried.
+                        elif layer < a_2D_buried[row][col]:
+                            seq += [materialID_buried]
+                        ## Not inside Felix2001 GeoJSON polygon
+                        ## e.g. Spain and Saudi Arabia
+                        elif a_2D_mIDs[row][col] == 0:
+                            seq += [gap]
+                        else:
+                            seq += [int(a_2D_mIDs[row][col])]
+        ##                    materialID = a_2D_mIDs[row][col]
+        ##                    try:
+        ##                        color = d_colors[materialID]
+        ##                    except KeyError:
+        ##                        color = len(d_colors.keys())+1
+        ##                        d_colors[materialID] = color
+        ##                    seq += [color]
+                        ## Continue loop over j.
+                        continue
+                    ## No bricks along line.
+                    if seq == args.n*[gap]:
+                        continue
+                    if layer == 0 and row1 == 2 and col1 == 1:
+                        print(row, col, seq, len(seq), row1, col1)
+                    seq = find_consecutive(seq)
+                    if layer == 0 and row1 == 2 and col1 == 1:
+                        print(row, col, seq, len(seq), row1, col1)
+                    append_designID_materialID_main(
+                        args, seq, layer, i, irow, jrow, icol, jcol,
+                        max_len, row1, col1,
+                        a_3D_dIDs, a_3D_mIDs)
+                    ## Continue loop over i.
+                    continue
+                ## Continue col1 loop.
                 continue
-            ## No bricks along line.
-            if seq == n*[gap]:
-                continue
-            seq = find_consecutive(seq, n)
-            append_designID_materialID_main(
-                seq, layer, i, irow, jrow, icol, jcol, d_len2designIDs,
-                max_len,
-                a_3D_dIDs, a_3D_mIDs)
-            ## Continue loop over i.
+            ## Continue row1 loop.
             continue
         ## Continue layer loop.
         continue
@@ -590,7 +625,7 @@ def find_connected_exposed(
 
 
 def append_designID_materialID_main(
-    seq, layer, i, irow, jrow, icol, jcol, d_len2designIDs, max_len,
+    args, seq, layer, i, irow, jrow, icol, jcol, max_len, row1, col1,
     a_3D_dIDs, a_3D_mIDs):
 
     gap = 'x'
@@ -610,83 +645,56 @@ def append_designID_materialID_main(
 ##            print(materialID)
 ##            print(type(materialID))
 ##            stop
-        ## Look up designID of given length.
-        try:
-            length = len_group
+        ## How many plates of max length will fit?
+        for k in range(len_group//max_len):
+            length = max_len
+            ## Look up designID of given length.
             designID = d_len2designIDs[length]
-            pos = append_designID_materialID(
+            pos = append_designID_materialID_sub(
                 layer, designID, materialID,
                 a_3D_dIDs, a_3D_mIDs,
-                pos, i, irow, jrow, icol, jcol, length)
-        except KeyError:
-            ## How many plates of max length will fit?
-            for k in range(len_group//max_len):
-                length = max_len
-                designID = d_len2designIDs[length]
-                pos = append_designID_materialID(
-                    layer, designID, materialID,
-                    a_3D_dIDs, a_3D_mIDs,
-                    pos, i, irow, jrow, icol, jcol, length)
-            ## How much space left after filling with plates of max length?
-            mod = len_group % max_len
-            ## No space left.
-            if mod == 0:
-                continue
-            ## Plate length exists.
-            try:
-                length = mod
-                designID = d_len2designIDs[length]
-                pos = append_designID_materialID(
-                    layer, designID, materialID,
-                    a_3D_dIDs, a_3D_mIDs,
-                    pos, i, irow, jrow, icol, jcol, length)
-                if layer == 25 and length == 4 and materialID == 194:
-                    print('d', pos, materialID)
-##                print('d', pos, materialID)
-            ## Plate length does not exist.
-            except KeyError:
-                assert max_len == 8
-                if mod == 7:
-                    len1 = 4
-                    len2 = 3
-                elif mod == 5:
-                    len1 = 3
-                    len2 = 2
-                else:
-                    print('mod', mod)
-                    print(k, list(g), len_group)
-                    stop
-                for length in (len1, len2):
-                    designID = d_len2designIDs[length]
-                    pos = append_designID_materialID(
-                        layer, designID, materialID,
-                        a_3D_dIDs, a_3D_mIDs,
-                        pos, i, irow, jrow, icol, jcol, length)
-                    if layer == 25 and length == 4 and materialID == 194:
-                        print('e', pos, materialID)
-##                    print('e', pos, materialID)
+                pos, i, irow, jrow, icol, jcol, length, row1, col1, args)
+        ## How much space left after filling with plates of max length?
+        mod = len_group % max_len
+        ## No space left.
+        if mod == 0:
+            continue
+        ## todo: also check materialID existence...
+        assert max_len == 8
+        if mod == 7:
+            lengths = (4,3)
+        elif mod == 5:
+            lengths = (3,2)
+        else:
+            lengths = (mod,)
+        for length in lengths:
+            designID = d_len2designIDs[length]
+            pos = append_designID_materialID_sub(
+                layer, designID, materialID,
+                a_3D_dIDs, a_3D_mIDs,
+                pos, i, irow, jrow, icol, jcol, length, row1, col1, args)
         ## Continue loop over materialID groups.
         continue
 
     return
 
 
-def append_designID_materialID(
+def append_designID_materialID_sub(
     layer, designID, materialID,
     a_3D_dIDs, a_3D_mIDs,
-    pos, i, irow, jrow, icol, jcol, length,):
+    pos, i, irow, jrow, icol, jcol, length, row1, col1, args):
 
     buried = {'o': materialID_buried}
 
     for j in range(length):
-        row = i*irow+(pos+j)*jrow
-        col = i*icol+(pos+j)*jcol
+        row = row1*args.plate_size + i*irow+(pos+j)*jrow
+        col = col1*args.plate_size + i*icol+(pos+j)*jcol
         ## replace Southern plate
         ## replace Eastern plate
-        if layer % 2 == 1 and j == 0:  # sep13 tmp!!!
+        if layer % 2 == 1 and j == length-1:
             a_3D_dIDs[layer][row][col] = designID
             a_3D_mIDs[layer][row][col] = materialID
-        elif j == length-1:
+        elif layer % 2 == 0 and j == length-1:
             a_3D_dIDs[layer][row][col] = designID
             a_3D_mIDs[layer][row][col] = materialID
         else:
@@ -698,10 +706,12 @@ def append_designID_materialID(
     return pos
 
 
-def find_consecutive(seq, repeat):
+def find_consecutive(seq):
 
     gap = 'x'
     buried = '0'
+
+    n = len(seq)
 
     groups = [list(g) for k, g in itertools.groupby(seq)]
     seq2 = []
@@ -734,7 +744,7 @@ def find_consecutive(seq, repeat):
                 else:
                     seq2 += len(g)*groups[i-1][0]
             ## if end of sequence then continue previous color
-            elif len(seq2)+len(g) == repeat:
+            elif len(seq2)+len(g) == n:
                 seq2 += len(g)*groups[i-1][0]
             ## gap before and after
             elif groups[i-1][0] == gap and groups[i+1][0] == gap:
@@ -784,7 +794,7 @@ def find_consecutive(seq, repeat):
                         seq2 += len(g)*[groups[i+1][0]]
                         continue
 ##    print(tuple(seq2), t)
-    assert len(seq2) == repeat
+    assert len(seq2) == n
 
     return seq2
 
@@ -822,7 +832,7 @@ def find_connected_buried(args, a_2D_buried, a_3D_dIDs):
 
 def largest_empty_rectangle(
     args, layer, r1, c1,
-    a_2D_buried, a_3D_dIDs, zero=0):
+    a_2D_buried, a_3D_dIDs, a_2D_density, a_2D_mIDs, zero=0):
 
     ## http://en.wikipedia.org/wiki/Largest_empty_rectangle
 
@@ -846,6 +856,10 @@ def largest_empty_rectangle(
             ## when looping over layer i+2.
             if a_3D_dIDs[layer][r3][c3] != zero:
                 continue
+            ## Skip if there is room for ubiquitous non-buried/colored brick above.
+            if layer % 3 != 2 and 3*(layer//3) + 2 <= a_2D_density[r3][c3]:
+                if a_2D_mIDs[r3][c3] in ubiquitous:
+                    continue
             ## first row
             if r2 == 0:
                 h[r2][c2] = 1
@@ -863,6 +877,16 @@ def largest_empty_rectangle(
 ##            ## To avoid rotating at edges.
 ##            if r2 % 2 == 0 or c2 % 2 == 0:
 ##                continue
+            ## Only consider every 4th grid point.
+            ## To avoid rotating 2 stud bricks at edges.
+            if r2 % 4 != 3 or c2 % 4 != 3:
+                continue
+##            if layer % 2 == 0:
+##                if r2 % 4 != 3 or c2 % 2 != 1:
+##                    continue
+##            else:
+##                if r2 % 2 != 1 or c2 % 4 != 3:
+##                    continue
 
             min_w = w[r2][c2]
             for dh in range(h[r2][c2]):
@@ -943,7 +967,7 @@ def largest_empty_rectangle(
     return d_rectangle
 
 
-def find_connected_buried_new(args, a_2D_buried):
+def find_connected_buried_new(args, a_2D_buried, a_2D_density, a_2D_mIDs):
 
     print('''Finding connected 1x1 plates
 and replacing them with larger plates.''')
@@ -964,15 +988,15 @@ and replacing them with larger plates.''')
                 while True:
                     d_rectangle = largest_empty_rectangle(
                         args, layer, r1, c1,
-                        a_2D_buried, a_3D_dIDs)
+                        a_2D_buried, a_3D_dIDs, a_2D_density, a_2D_mIDs)
                     ## No more substitution to be made.
                     if any([
                         d_rectangle['area'] == 0,
                         d_rectangle['nrows'] < size_min,
                         d_rectangle['ncols'] < size_min]):
                         break
-                    if args.verbose:
-                        print('rectangle', r1, c1, layer, d_rectangle)
+##                    if args.verbose:
+##                        print('rectangle', r1, c1, layer, d_rectangle)
                     ## Calculate size of area to be filled.
                     for size in reversed(sorted(d_dIDs_sq_plate.keys())):
                         if all([
@@ -981,7 +1005,7 @@ and replacing them with larger plates.''')
                             break
                     if size > d_rectangle['nrows'] or size > d_rectangle['ncols']:
                         stopshouldnothappen
-                    print('size', size)
+##                    print('size', size)
                     ## Replace with brick(s) instead of plate every third layer.
                     ## Hence calculate modulo.
                     mod = layer % 3
