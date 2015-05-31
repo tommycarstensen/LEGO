@@ -1,6 +1,6 @@
 #!python3
 
-## Tommy Carstensen, 2014
+## Tommy Carstensen, Aug-Sep2014, Apr-May2015
 
 import numpy as np
 import math
@@ -15,9 +15,29 @@ import itertools
 import argparse
 
 
-## 1xlen plates
-d_len2designIDs = {1: 3024, 2: 3023, 3: 3623, 4: 3710, 6: 3666, 8: 3460}
-d_dIDs2dim = {v: {'dim0': 1, 'dim1': k} for k, v in d_len2designIDs.items()}
+## 
+d_len2designIDs = {
+    ## plates
+    1: {
+        ## width 1
+        1: {1: 3024, 2: 3023, 3: 3623, 4: 3710, 6: 3666, 8: 3460},
+        2: {1: 3023, 2: 3022, 3: 3021, 4: 3020, 6: 3795, 8: 3034},
+        },
+    ## bricks
+    3: {
+        ## width 1
+        1: {1: 3005, 2: 3004, 3: 3622, 4: 3010, 6: 3009, 8: 3008},
+        ## width 2
+        2: {1: 3004, 2: 3003, 3: 3002, 4: 3001, 6: 44237},
+        },
+    }
+d_dIDs2dim = {}
+for h in d_len2designIDs:
+    for w in sorted(d_len2designIDs[h].keys()):
+        for l, ID in d_len2designIDs[h][w].items():
+            if ID in d_dIDs2dim.keys():
+                continue
+            d_dIDs2dim[ID] = {'dim0': w, 'dim1': l}
 ## square plates
 d_dIDs_sq_plate = {
 ##    16: 91405,  # 16x16 (GBP2.58) only marginally cheaper than 8x8 (GBP0.67)
@@ -63,8 +83,6 @@ materialID_buried = 1
 
 ## Most common plates:
 
-
-## tmp!!! sep13
 
 
 ## TODO: FIRST LOOP 3 LAYERS (BRICK) AND THEN 1 LAYER (PLATES)
@@ -180,12 +198,8 @@ def main():
     a_3D_dIDs = find_connected_buried_new(
         args, a_2D_buried, a_2D_density, a_2D_mIDs)
 
-##    ##
-##    a_3D_dIDs = find_connected_buried(
-##        args, a_2D_buried, a_3D_dIDs)
-
     ##
-    a_3D_dIDs, a_3D_mIDs = find_connected_exposed(
+    a_3D_dIDs, a_3D_mIDs, a_3D_angle = find_connected_exposed(
         args, a_2D_density, a_2D_buried,
         a_3D_dIDs, a_2D_mIDs)
 
@@ -194,7 +208,7 @@ def main():
     numpy2lxfml(
         args,
         a_2D_density, lxfml, a_2D_mIDs, a_2D_buried,
-        a_3D_dIDs, a_3D_mIDs)
+        a_3D_dIDs, a_3D_mIDs, a_3D_angle)
 
 ##    print(pcount_max)
 ##    print(np.amin(a_gpw))
@@ -341,11 +355,8 @@ def color_as_nearby(args, a_2D_density, a_2D_mIDs):
                 for i in range(dist**2)
                 )
             del cnt[0]
-##            del cnt[119]  # tmp!!!
-##            del cnt[221]
             ## No nearby polygons/colors.
             if len(cnt) == 0:
-##                a_2D_mIDs[x][z] = 119 # tmp!!!
                 continue
             ## No bricks in Yemen.
 ##            if lat > Yemen_South and lon > Yemen_West:
@@ -356,25 +367,21 @@ def color_as_nearby(args, a_2D_density, a_2D_mIDs):
             ## Do not connect colors/polygons across the Red Sea.
             if lat >= Yemen_South and lon >= Israel_West and a_2D_density[x+1][z] == 0:
                 a_2D_density[x][z] = 0
-##                a_2D_mIDs[x][z] = 221
                 continue
             if lat >= Yemen_South1 and lon >= Yemen_West1:
                 if args.verbose:
                     print('Yemen1',x,z,lat,lon)
-##                a_2D_mIDs[x][z] = 221
                 a_2D_density[x][z] = 0
                 continue
             if lat >= Yemen_South2 and lon >= Yemen_West2:
                 if args.verbose:
                     print('Yemen2',x,z,lat,lon)
-##                a_2D_mIDs[x][z] = 221
                 a_2D_density[x][z] = 0
                 continue
             ## No bricks in Israel and Gaza.
             if lat > Israel_South and lon > Gaza_West:
                 if args.verbose:
                     print('Israel',x,z,lat,lon)
-##                a_2D_mIDs[x][z] = 221
                 a_2D_density[x][z] = 0
                 continue
             ## No bricks in Saudi Arabia across the Red Sea.
@@ -528,43 +535,37 @@ def find_connected_exposed(
     print('find connected exposed plates and remaining buried plates')
 
     a_3D_mIDs = np.zeros(np.shape(a_3D_dIDs), int)
-
-    max_len = max(d_len2designIDs.keys())
+    a_3D_angle = np.zeros(np.shape(a_3D_dIDs), int)
 
     gap = 'x'
+    buried = 'o'
+    buried = materialID_buried
 
     for layer in reversed(range(args.layers)):
         ## build plates horizontally and vertically in each layer
         if layer % 2 == 0:
-##            irow = 1
-##            jrow = 0
-##            icol = 0
-##            jcol = 1
             irow = 0
             jrow = 1
             icol = 1
             jcol = 0
-##            continue  # tmp!!!
             pass
         else:
-##            irow = 0
-##            jrow = 1
-##            icol = 1
-##            jcol = 0
             irow = 1
             jrow = 0
             icol = 0
             jcol = 1
-##            continue  # tmp!!!
             pass
-##        for x in range(2*48, 3*48):
-##            for y in range(1*48, 2*48):
-####        for y in range(1*48, 2*48):
-####            for x in range(2*48, 3*48):
-##                if a_2D_density[x][y] == 0:
-##                    continue
-##                print(x, y, a_2D_density[x][y], a_3D_mIDs[0][x][y], a_3D_dIDs[0][x][y])
-##        stooooop
+        if layer % 3 == 2:
+            h = 3  # bricks
+            layer_insert = layer-2
+            layer_remove = (layer, layer-1)
+            max_len = 6  # 1x8 (3008) available in few colors
+        else:
+            h = 1  # plates
+            layer_insert = layer
+            layer_remove = ()
+            max_len = 8
+
         ## loop baseplates from North to South
         for row1 in range(args.n//args.plate_size):
             ## loop baseplates from West to East
@@ -584,34 +585,25 @@ def find_connected_exposed(
                             seq += [gap]
                         ## Buried.
                         elif layer < a_2D_buried[row][col]:
-                            seq += [materialID_buried]
+                            seq += [buried]
                         ## Not inside Felix2001 GeoJSON polygon
                         ## e.g. Spain and Saudi Arabia
                         elif a_2D_mIDs[row][col] == 0:
                             seq += [gap]
                         else:
                             seq += [int(a_2D_mIDs[row][col])]
-        ##                    materialID = a_2D_mIDs[row][col]
-        ##                    try:
-        ##                        color = d_colors[materialID]
-        ##                    except KeyError:
-        ##                        color = len(d_colors.keys())+1
-        ##                        d_colors[materialID] = color
-        ##                    seq += [color]
                         ## Continue loop over j.
                         continue
                     ## No bricks along line.
                     if seq == args.n*[gap]:
                         continue
-                    if layer == 0 and row1 == 2 and col1 == 1:
-                        print(row, col, seq, len(seq), row1, col1)
-                    seq = find_consecutive(seq)
-                    if layer == 0 and row1 == 2 and col1 == 1:
-                        print(row, col, seq, len(seq), row1, col1)
+                    seq = find_consecutive(seq, gap=gap, buried=buried)
                     append_designID_materialID_main(
                         args, seq, layer, i, irow, jrow, icol, jcol,
                         max_len, row1, col1,
-                        a_3D_dIDs, a_3D_mIDs)
+                        a_3D_dIDs, a_3D_mIDs, a_3D_angle,
+                        h, layer_insert, layer_remove,
+                        gap, buried)
                     ## Continue loop over i.
                     continue
                 ## Continue col1 loop.
@@ -621,58 +613,54 @@ def find_connected_exposed(
         ## Continue layer loop.
         continue
 
-    return a_3D_dIDs, a_3D_mIDs
+    return a_3D_dIDs, a_3D_mIDs, a_3D_angle
 
 
 def append_designID_materialID_main(
     args, seq, layer, i, irow, jrow, icol, jcol, max_len, row1, col1,
-    a_3D_dIDs, a_3D_mIDs):
+    a_3D_dIDs, a_3D_mIDs, a_3D_angle,
+    h, layer_insert, layer_remove, gap, buried):
 
-    gap = 'x'
-    buried = 'o'
+    width = 1
 
     pos = 0
     for materialID, g in itertools.groupby(seq):
         ## Get length of iterator.
         len_group = len(list(g))
-##        print('pos', pos, 'len_group', len_group)
         if materialID == gap:
             pos += len_group
-##            print('a', pos, materialID)
             continue
-##        if materialID == 0:
-##            print(seq)
-##            print(materialID)
-##            print(type(materialID))
-##            stop
         ## How many plates of max length will fit?
+        ## 1st call of sub routine.
         for k in range(len_group//max_len):
             length = max_len
             ## Look up designID of given length.
-            designID = d_len2designIDs[length]
+            designID = d_len2designIDs[h][width][length]
             pos = append_designID_materialID_sub(
                 layer, designID, materialID,
-                a_3D_dIDs, a_3D_mIDs,
-                pos, i, irow, jrow, icol, jcol, length, row1, col1, args)
+                a_3D_dIDs, a_3D_mIDs, a_3D_angle,
+                pos, i, irow, jrow, icol, jcol, length, row1, col1, args,
+                layer_insert, layer_remove, h)
         ## How much space left after filling with plates of max length?
         mod = len_group % max_len
         ## No space left.
         if mod == 0:
             continue
-        ## todo: also check materialID existence...
-        assert max_len == 8
+        assert max_len <= 8
         if mod == 7:
             lengths = (4,3)
         elif mod == 5:
             lengths = (3,2)
         else:
             lengths = (mod,)
+        ## 2nd call of sub routine.
         for length in lengths:
-            designID = d_len2designIDs[length]
+            designID = d_len2designIDs[h][width][length]
             pos = append_designID_materialID_sub(
                 layer, designID, materialID,
-                a_3D_dIDs, a_3D_mIDs,
-                pos, i, irow, jrow, icol, jcol, length, row1, col1, args)
+                a_3D_dIDs, a_3D_mIDs, a_3D_angle,
+                pos, i, irow, jrow, icol, jcol, length, row1, col1, args,
+                layer_insert, layer_remove, h)
         ## Continue loop over materialID groups.
         continue
 
@@ -681,42 +669,62 @@ def append_designID_materialID_main(
 
 def append_designID_materialID_sub(
     layer, designID, materialID,
-    a_3D_dIDs, a_3D_mIDs,
-    pos, i, irow, jrow, icol, jcol, length, row1, col1, args):
-
-    buried = {'o': materialID_buried}
+    a_3D_dIDs, a_3D_mIDs, a_3D_angle,
+    pos, i, irow, jrow, icol, jcol, length, row1, col1, args,
+    layer_insert, layer_remove, h):
 
     for j in range(length):
         row = row1*args.plate_size + i*irow+(pos+j)*jrow
         col = col1*args.plate_size + i*icol+(pos+j)*jcol
         ## replace Southern plate
         ## replace Eastern plate
-        if layer % 2 == 1 and j == length-1:
-            a_3D_dIDs[layer][row][col] = designID
-            a_3D_mIDs[layer][row][col] = materialID
-        elif layer % 2 == 0 and j == length-1:
-            a_3D_dIDs[layer][row][col] = designID
-            a_3D_mIDs[layer][row][col] = materialID
+        if layer % 2 == 1 and j == length - 1:
+            a_3D_dIDs[layer_insert][row][col] = designID
+            a_3D_mIDs[layer_insert][row][col] = materialID
+            if all([
+                row % args.plate_size > 0,
+##                length > 1,
+                a_3D_dIDs[layer_insert][row-1][col] == designID,
+                a_3D_mIDs[layer_insert][row-1][col] == materialID,
+                ]):
+                a_3D_dIDs[layer_insert][row][col] = d_len2designIDs[h][2][length]
+                a_3D_dIDs[layer_insert][row-1][col] = -1
+                a_3D_mIDs[layer_insert][row-1][col] = 0
+                if length == 1:
+                    a_3D_angle[layer_insert][row][col] = 1
+        elif layer % 2 == 0 and j == length - 1:
+            a_3D_dIDs[layer_insert][row][col] = designID
+            a_3D_mIDs[layer_insert][row][col] = materialID
+            if all([
+                col % args.plate_size > 0,
+##                length > 1,
+                a_3D_dIDs[layer_insert][row][col-1] == designID,
+                a_3D_mIDs[layer_insert][row][col-1] == materialID,
+                ]):
+                a_3D_dIDs[layer_insert][row][col] = d_len2designIDs[h][2][length]
+                a_3D_dIDs[layer_insert][row][col-1] = -1
+                a_3D_mIDs[layer_insert][row][col-1] = 0
+                if length == 1:
+                    a_3D_angle[layer_insert][row][col] = 1
         else:
-            a_3D_dIDs[layer][row][col] = -1
-            a_3D_mIDs[layer][row][col] = 0
+            a_3D_dIDs[layer_insert][row][col] = -1
+            a_3D_mIDs[layer_insert][row][col] = 0
+        for layer2 in layer_remove:
+            a_3D_dIDs[layer2][row][col] = -1
+            a_3D_mIDs[layer2][row][col] = 0
 
     pos += length
 
     return pos
 
 
-def find_consecutive(seq):
-
-    gap = 'x'
-    buried = '0'
+def find_consecutive(seq, gap='x', buried='o'):
 
     n = len(seq)
 
     groups = [list(g) for k, g in itertools.groupby(seq)]
     seq2 = []
     for i, g in enumerate(groups):
-##        print('*',i,g)
         if g[0] == gap:
             seq2 += g
         elif g[0] != buried:
@@ -725,16 +733,12 @@ def find_consecutive(seq):
         else:
             ## first group
             if i == 0:
-                try:
-                    ## next group is gap
-                    if groups[i+1][0] == gap:
-                        seq2 += g
-                    ## color first group same as next group
-                    else:
-                        seq2 += len(g)*groups[i+1][0]
-                except:
-                    print(groups)
-                    stop
+                ## next group is gap
+                if groups[i+1][0] == gap:
+                    seq2 += g
+                ## color first group same as next group
+                else:
+                    seq2 += len(g)*[groups[i+1][0]]
             ## last group
             elif i+1 == len(groups):
                 ## previous group is gap
@@ -742,10 +746,10 @@ def find_consecutive(seq):
                     seq2 += g
                 ## color last group same as previous group
                 else:
-                    seq2 += len(g)*groups[i-1][0]
+                    seq2 += len(g)*[groups[i-1][0]]
             ## if end of sequence then continue previous color
             elif len(seq2)+len(g) == n:
-                seq2 += len(g)*groups[i-1][0]
+                seq2 += len(g)*[groups[i-1][0]]
             ## gap before and after
             elif groups[i-1][0] == gap and groups[i+1][0] == gap:
                 seq2 += g
@@ -793,41 +797,9 @@ def find_consecutive(seq):
                     else:
                         seq2 += len(g)*[groups[i+1][0]]
                         continue
-##    print(tuple(seq2), t)
     assert len(seq2) == n
 
     return seq2
-
-
-def find_connected_buried(args, a_2D_buried, a_3D_dIDs):
-
-    ## loop baseplates from North to South
-    for row1 in range(n//plate_size):
-        ## loop baseplates from West to East
-        for col1 in range(n//plate_size):
-            if args.verbose:
-                print('find_connected_buried', row1, col1)
-            for layer in range(layers):
-                if layer % 2 == 0:
-                    k1 = 'x'
-                    k2 = 'y'
-                else:
-                    k1 = 'y'
-                    k2 = 'x'
-                d = {}
-                ## North to South
-                for row2 in range(plate_size):
-                    row3 = row1*plate_size+row2
-                    d[k1] = row3
-                    ## West to East
-                    for col2 in range(plate_size):
-                        col3 = col1*plate_size+col2
-                        d[k2] = col3
-                        xxxx
-                        print(a_2D_buried[row3][col3])
-                        print(a_3D_dIDs[layer][row3][col3])
-
-    return
 
 
 def largest_empty_rectangle(
@@ -1522,7 +1494,7 @@ def json2array(args):
 def numpy2lxfml(
     args,
     a_2D_density, lxfml, a_2D_mIDs, a_2D_buried,
-    a_3D_dIDs, a_3D_mIDs,
+    a_3D_dIDs, a_3D_mIDs, a_3D_angle,
     ):
 
     ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
@@ -1554,7 +1526,8 @@ def numpy2lxfml(
                     assert plate_size == 48
                     line = format_line(
                         refID, designID_baseplate, materialID_grey,
-                        (row1+1)*plate_size-1, 0, (col1+1)*plate_size-1)
+                        (row1+1)*plate_size-1, 0, (col1+1)*plate_size-1,
+                        a_3D_angle)
                     f.write(line)
                     lxfml_plate.write(line)
                     ## Write first step.
@@ -1581,7 +1554,7 @@ def numpy2lxfml(
                                     y, row, col, refID,
                                     a_2D_mIDs, a_2D_density,
                                     a_2D_buried,
-                                    a_3D_dIDs, a_3D_mIDs,
+                                    a_3D_dIDs, a_3D_mIDs, a_3D_angle,
                                     )
                                 if line:
                                     f.write(line)
@@ -1630,7 +1603,7 @@ def numpy2lxfml(
 def generate_line(
     y, row, col, refID,
     a_2D_mIDs, a_2D_density, a_2D_buried,
-    a_3D_dIDs, a_3D_mIDs):
+    a_3D_dIDs, a_3D_mIDs, a_3D_angle):
 
     if y >= a_2D_density[row][col]:
         return None
@@ -1668,12 +1641,12 @@ def generate_line(
         pass
 
     line = format_line(
-        refID, designID, materialID, row, y, col)
+        refID, designID, materialID, row, y, col, a_3D_angle)
 
     return line
 
 
-def format_line(refID, designID, materialID, row, y, col):
+def format_line(refID, designID, materialID, row, y, col, a_3D_angle):
 
     ## LEGO dimensions
     ## http://upload.wikimedia.org/wikipedia/commons/1/1a/Lego_dimensions.svg
@@ -1685,20 +1658,19 @@ def format_line(refID, designID, materialID, row, y, col):
     line += ' designID="{0}"'.format(designID)
     line += ' materialID="{0}"'.format(materialID)
     line += ' itemNos="{0}{1}"'.format(designID, materialID)
+
     ## rotate / rotation
-    if y % 2 == 1 and designID != designID_baseplate:  # 2014sep13 2015may20
-##        line += ' angle="0" ax="0" ay="1" az="0"'
-        line += ' angle="90" ax="0" ay="1" az="0"'  # tmp!!! test!!! East to West (from same point as S/N)
+    if y % 2 == 1 and designID != designID_baseplate:
+        angle = 90
         dtx = P * (d_dIDs2dim[designID]['dim0']-1)
         dtz = 0
-##        line += ' angle="90" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
-##        line += ' angle="270" ax="0" ay="1" az="0"' ## tmp!!! test!!! East to West (from same point as S/N)
-##        line += ' angle="270" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
-##        line += ' angle="0" ax="0" ay="-1" az="0"' ## tmp!!! test!!! West to East
     else:
-        line += ' angle="0" ax="0" ay="1" az="0"'
+        angle = 0
         dtx = 0
         dtz = 0
+    if a_3D_angle[y][row][col]:
+        angle = 90 - angle
+    line += ' angle="{}" ax="0" ay="1" az="0"'.format(angle)
 ##    line += ' tx="{0:.1f}"'.format(row*-P)
     line += ' tx="{0:.1f}"'.format(row*-P + dtx)
     line += ' ty="{0:.2f}"'.format(y*h)
@@ -1793,4 +1765,14 @@ def read_gpw(file_gpw):
 
 
 if __name__ == '__main__':
+####    seq = 44*['x']+3*['o']+['b']
+####    seq = find_consecutive(seq)
+####    print(seq)
+####    seq = ['b']+3*['o']+44*['x']
+####    seq = find_consecutive(seq)
+####    print(seq)
+##    seq = [23, 1, 1, 1, 'x', 'x', 'x', 'x', 1, 1, 23, 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x']
+##    seq = find_consecutive(seq, gap='x', buried=1)
+##    print(seq)
+##    stop
     main()
