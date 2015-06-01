@@ -78,6 +78,28 @@ ubiquitous = {
 
 materialID_buried = 1
 
+## Tuples are sorted from common to rare.
+d_colorfamily2color = {
+    'red': {21, 154},  # Khoisan
+    'black':{26},  #  IndoEuropean/Afrikaans
+    'blue': (
+        23, 102, 140,
+        323,  # Aqua available on BL.
+##        321, 322,  # Dark Azure 321, Medium Azure 322
+        1,  # White looks good with bright blue colors and is cheaper.
+        ),  # Niger-Congo
+    'yellow-orange-brown': {
+        24, 5, 138, 106, 191,
+        192,  # reddish brown
+        },  #  AfroAsiatic
+    'green': {28, 119, 141, 330},  # Bantu
+##    'orange-brown': {},
+    'purple': {221, 222, 124, 324},  # NiloSaharan
+    'grey': {194, 199},  # Other...
+##    'white': {1},  # buried
+    }
+d_color2family = {color: family for family in d_colorfamily2color.keys() for color in d_colorfamily2color[family]}
+
 ## Most common bricks:
 ## https://www.bricklink.com/catalogStats.asp?statID=C&itemType=P&inItemType=&catID=5
 
@@ -572,7 +594,6 @@ def find_connected_exposed(
             for col1 in range(args.n//args.plate_size):
                 for i in range(args.plate_size):
                     seq = []
-        ##            d_colors = {}
                     for j in range(args.plate_size):
                         row = row1*args.plate_size + i*irow+j*jrow
                         col = col1*args.plate_size + i*icol+j*jcol
@@ -1360,12 +1381,14 @@ def normalize(a, args):
 
 def json2array(args):
 
+    ## http://en.wikipedia.org/wiki/The_Languages_of_Africa
+
     print('Converting GeoJSON polygons to array of LEGO color points')
 
     ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
         '{}.asc'.format(args.affix))
 
-    d_colors = {}
+    d_family2color = {}
     with open(args.colors) as f:
         for line in f:
             if line == '\n':
@@ -1373,9 +1396,22 @@ def json2array(args):
             if line[0] == '#':
                 continue
             l = line.split('\t')
-            d_colors[l[0]] = int(l[1])
+            d_family2color[l[0]] = int(l[1])
+    d_family2color['Semitic'] = d_family2color['Semitic: Arab, Bedouin']
+    ## Define super classes.
+    d_family2color['Niger-Congo'] = d_family2color['West Atlantic']
+    d_family2color['Nilo-Saharan'] = d_family2color['Nilotic']
+    ## Make Afrikaans black.
+    assert 26 not in d_family2color.values()
+    d_family2color['Afrikaans'] = 26
+    assert 194 not in d_family2color.values()
+    d_family2color['Other'] = 194
+    assert 199 not in d_family2color.values()
+    d_family2color['Miscellaneous / Unclassified'] = 199
 
-    print(d_colors)
+    print(d_family2color)
+
+    d_ethnicity2color = {}
 
     a_2D_mIDs = np.zeros((args.n, args.n), int)
 
@@ -1383,108 +1419,199 @@ def json2array(args):
         js = json.load(f)
 
     for feature in js['features']:
+
         polygon = shapely.geometry.shape(feature['geometry'])
         family = feature['properties']['FAMILY']
-        if family == 'Malagasy':
+        ethnicity = feature['properties']['ETHNICITY']
+        ID = feature['properties']['ID']
+        if ID == 0 and family == '' and ethnicity == '':
             continue
-        try:
-            color = d_colors[family]
-        except KeyError:
-            color = 324  # medium lavender (e.g. Afrikaans)
-            color = 26  # black
-            print(family, feature['properties']['ETHNICITY'])
-        if family in ('',):
-##            print(
-##            feature['properties'], polygon.bounds, feature['id'],
-##            feature['properties']['ID'])
-##            continue
-            color = 322  # medium azure
-##            for key in feature.keys():
-##                if key == 'geometry': continue
-##                print(key, feature[key])
+
         min_lon, min_lat, max_lon, max_lat = polygon.bounds
         _den = cellsize * max(nrows, ncols)
         row_min = args.n*(min_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
         row_max = args.n*(max_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
         col_min = args.n*(min_lon-xllcorner)/_den-0.5
         col_max = args.n*(max_lon-xllcorner)/_den-0.5
-        within = False
+
+        ## Bantu languages in Angola incorrectly assigned to the Kru family.
+        if family == 'Kru' and max_lat < 0:
+            family = 'Bantu'
+        ## Koman languages incorrectly assigned to the Maban family.
+        ## Both Nilo-Saharan though.
+        elif family == 'Maban' and min_lon > 30:
+            family = 'Nilotic'
+            ## http://en.wikipedia.org/wiki/Koman_languages
+            ## http://en.wikipedia.org/wiki/Berta_languages
+            ## http://en.wikipedia.org/wiki/Eastern_Jebel_languages
+            assert ethnicity in (
+                ## Koman
+                'OPUUO',  # Ethiopia
+                'GULE',  # Sudan
+                'KOMA',  # Sudan
+                ## Chari-Nile > Berta
+                'BERTA',
+                ## Chari-Nile > Central Sudanic
+                'BAREA',
+                ## Chari-Nile > Eastern Sudanic
+                'GAAM',
+                'MUN',
+                'MASONGO',
+                'BAREA',
+                ## Chari-Nile
+                'KUNAMA',
+                )
+        ## http://en.wikipedia.org/wiki/Ariaal_people
+        elif family == 'Nilotic / Bantoid' and ethnicity == 'ARIAAL':
+            family = 'Nilotic'
+        ## http://en.wikipedia.org/wiki/Chadian_Arabic
+        elif family == 'Saharan / Cushitic' and ethnicity == 'SHUWA':
+            family = 'Semitic'
+        ## https://www.ethnologue.com/language/pnz
+        ## http://en.wikipedia.org/wiki/Pana_language
+        elif family == 'Fufulde / Adamawa-Ubangia' and ethnicity == 'PANI':
+            family = 'Niger-Congo'
+        ## http://en.wikipedia.org/wiki/Yedina_language
+        elif family == 'Chadic / Cushitic' and ethnicity == 'BUDUMA':
+            family = 'Chadic'
+        ## http://en.wikipedia.org/wiki/Fongoro_language
+        elif family == 'Saharan / Nilotic' and ethnicity == 'FONGORO':
+            family = 'Nilo-Saharan'
+        ## http://en.wikipedia.org/wiki/Aja_language_(Nilo-Saharan)
+        elif family == 'Adamawa-Ubangian / Chari-Nile' and ethnicity == 'AJA':
+            family = 'Chari-Nile'
+        ## http://en.wikipedia.org/wiki/Shatt_language
+        elif family == 'Chari-Nile / Nilotic' and ethnicity == 'SHATT':
+            family = 'Nilo-Saharan'
+        ## Do not color/build Madagascar.
+        elif family == 'Malagasy':
+            continue
         ## Afrikaans
-        if family == 'Miscellaneous / Unclassified':
+        elif family == 'Miscellaneous / Unclassified':
             if max_lat < -20:
                 family = 'Afrikaans'
-                color = 140  # earth blue
-                color = 5  # tan
-                color = 119  # lime
+                assert ID in (
+                    153,  # Johannesburg
+                    138,  # Bloemfontein
+                    141,  # Durban
+                    143,  # East London
+                    146,  # Cape Town
+                    )
+            elif ethnicity == '' and ID in (
+                425,  # Liberia coast
+                432,  # Sierra Leone coast
+                804,  # Abuja, Nigeria
+                1261, 1463,  # Nigeria/Cameroon border
+                1496, 1502, 1509, 1616, 1736, 1738, 1769,  # Nigeria
+                ):
+                pass
             else:
-                print(min_lon, min_lat, max_lon, max_lat)
-        elif family not in d_colors.keys():
-            print(family, min_lon, min_lat, max_lon, max_lat)
+                assert ethnicity in (
+                    'YEKE',
+                    'DARI',  # Cameroon
+                    ## http://en.wikipedia.org/wiki/Kambari_languages
+                    'KAMBARI',  # Nigeria
+                    ## http://en.wikipedia.org/wiki/Kudu-Camo_language
+                    'KUDU',  # Nigeria
+                    )
+        elif family == 'Other':
+            ## http://en.wikipedia.org/wiki/Daisu_language
+            if ethnicity == 'DAISU':
+                family = 'Bantu'
+        elif '/' in family and ethnicity != '':
+            try:
+                colors = [d_family2color[s.strip()] for s in family.split('/')]
+            except:
+                colors = []
+            if len(colors) == 1:
+                print(family, ethnicity, colors)
+                stop
+        else:
+            pass
+
+        ## Get color of family.
+        try:
+            color = d_family2color[family]
+        except KeyError:
+            print(ID, family, ethnicity, min_lat, min_lon, max_lat, max_lon)
+            stop
+
+        ## List of tuples of rows and cols to color.
+        l_within = []
+
+        ## Initiate count of vicinal colors.
+        color_family = d_color2family[color]
+        colors = d_colorfamily2color[color_family]
+        c = collections.Counter(colors)
+            
         ## loop from South to North
-        for row in range(math.floor(row_min), math.ceil(row_max)):
+        for row in range(math.floor(row_min), math.ceil(row_max)+1):
             latitude = cellsize*(row+0.5)*max(nrows, ncols)/args.n+yllcorner
             latitude -= cellsize*(ncols-nrows)/2
-            ## Bantu languages in Angola incorrectly assigned to the Kru family
-            if family == 'Kru' and latitude < 0:
-                family = 'Bantu'
-                color = d_colors[family]
             ## loop from West to East
-            for col in range(math.floor(col_min), math.ceil(col_max)):
+            for col in range(math.floor(col_min), math.ceil(col_max)+1):
                 longitude = cellsize*(col+0.5)*max(nrows, ncols)/args.n+xllcorner
-                ## incorrectly assigned to the Maban family
-                if family == 'Maban' and longitude > 30:  # min_lon > 30
-                    within = True
-                    continue  # don't continue but re-assign!!! tmp!!!
-                ## don't change from non-miscellaneous to miscellanous
-                if (
-                    family in ('', 'Miscellaneous / Unclassified') and
-                    a_2D_mIDs[args.n-row][col]):
-                    within = True
+
+                ## Don't change from non-miscellaneous to miscellanous.
+                if all([
+                    any([
+                        family in ('Miscellaneous / Unclassified', 'Other'),
+                        '/' in family]),
+                    a_2D_mIDs[args.n-row][col] != 0]):
                     continue
-##                ## color with color of largest nearby stack
-##                ## i.e. sort by height and filter out non-colored with if
-##                if family in ('','Miscellaneous / Unclassified'):
-####                if family not in d_colors.keys():
-##                    for x in range(3):
-##                        for y in range(3):
-##                            print(x,y,a_2D_mIDs[n-row+x-1][col+y-1])
-##                            print(a_2D_density[n-row+x-1][col+y-1])
-##                    print(i, family, feature['properties']['ETHNICITY'])
-##                    stop
+
                 point = shapely.geometry.Point(longitude, latitude)
                 ## solve the point-in-polygen problem
                 if polygon.contains(point):
-                    within = True
-                    a_2D_mIDs[args.n-row][col] = color
                     pass
                 ## polygon might not contain point rounded to nearest grid value
                 ## hence add manually
                 elif row_max-row_min < 2.5 or col_max-col_min < 2.5:
-                    within = True
-                    ## don't change color if not within polygon
-                    if not a_2D_mIDs[args.n-row][col] == 0:
-                        continue
-                    a_2D_mIDs[args.n-row][col] = color
+                    ## Don't change pre-assigned color if not within polygon.
                     pass
+                else:
+                    continue
+
+                dist = 2
+                for i in range(-dist, dist+1):
+                    for j in range(-dist, dist):
+                        mID = a_2D_mIDs[args.n-row+i][col+j]
+                        if mID not in c:
+                            continue
+                        c[mID] += 1
+
+                l_within.append((args.n-row, col))
+
                 ## continue loop over cols
                 continue
             ## continue loop over rows
             continue
-##        if family == 'Maban' and longitude > 30:
-##            print(
-##        row, col, latitude, longitude, family,
-##        feature['properties']['ETHNICITY'])
-        if within is False:
-            print(
-                feature['properties']['ETHNICITY'], family, polygon.bounds,
-                row_max-row_min, col_max-col_min,
-                )
-        elif family not in d_colors.keys() and family != 'Afrikaans':
-            print(
-                'color', color, 'ID', feature['id'],
-                'family', family, 'ethnicity', feature['properties']['ETHNICITY'],
-                'lonlat', round(longitude, 0), round(latitude, 0),
-                'rowcol', row, col)
+
+        if l_within:
+            try:
+                color = d_ethnicity2color[family+':'+ethnicity]
+            except KeyError:
+                least_common = c.most_common()[-1]
+                ## Color as least common and preferably use cheap colors.
+                for u in ubiquitous:
+                    if c[u] == 1:
+                        color = u
+                        break
+                else:
+                    color = least_common[0]
+                d_ethnicity2color[family+':'+ethnicity] = color
+            for row, col in l_within:
+                a_2D_mIDs[row][col] = color
+
+            if color in (1, 194, 199):
+                print(len(l_within), color, ID, family, ethnicity, min_lat, min_lon, max_lat, max_lon)
+
+        ## Color possibly already assigned to all points in polygon.
+        else:
+            if args.verbose:
+                print('small', family, ethnicity)
+            pass
+
         ## continue loop over features
         continue
 
