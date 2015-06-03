@@ -1,6 +1,10 @@
 #!python3
 
 ## Tommy Carstensen, Aug-Sep2014, Apr-May2015
+## Acknowledgments:
+## Martin Haspelmath
+## William Reno
+## Friedrich Riha, Manj Sandhu, Mutua Matheka, Jane Walsh
 
 import numpy as np
 import math
@@ -13,10 +17,11 @@ import shapely
 from shapely.geometry import Point
 import itertools
 import argparse
+import matplotlib.pyplot as plt
 
 
 ## 
-d_len2designIDs = {
+d_len2dIDs = {
     ## plates
     1: {
         ## width 1
@@ -28,13 +33,13 @@ d_len2designIDs = {
         ## width 1
         1: {1: 3005, 2: 3004, 3: 3622, 4: 3010, 6: 3009, 8: 3008},
         ## width 2
-        2: {1: 3004, 2: 3003, 3: 3002, 4: 3001, 6: 44237},
+        2: {1: 3004, 2: 3003, 3: 3002, 4: 3001, 6: 44237, 8: 3007},
         },
     }
 d_dIDs2dim = {}
-for h in d_len2designIDs:
-    for w in sorted(d_len2designIDs[h].keys()):
-        for l, ID in d_len2designIDs[h][w].items():
+for h in d_len2dIDs:
+    for w in sorted(d_len2dIDs[h].keys()):
+        for l, ID in d_len2dIDs[h][w].items():
             if ID in d_dIDs2dim.keys():
                 continue
             d_dIDs2dim[ID] = {'dim0': w, 'dim1': l}
@@ -76,29 +81,43 @@ ubiquitous = {
     222,  # Light Purple / Light Pink
     }
 
-materialID_buried = 1
+materialID_buried = 999
 
 ## Tuples are sorted from common to rare.
 d_colorfamily2color = {
-    'red': {21, 154},  # Khoisan
-    'black':{26},  #  IndoEuropean/Afrikaans
+    'red': (21, 154),  # Khoisan
+    'black':(26,),  #  IndoEuropean/Afrikaans
+    ## Niger-Congo
     'blue': (
         23, 102, 140,
+        1,  # White looks good with bright blue colors and is cheaper.
         323,  # Aqua available on BL.
 ##        321, 322,  # Dark Azure 321, Medium Azure 322
-        1,  # White looks good with bright blue colors and is cheaper.
-        ),  # Niger-Congo
-    'yellow-orange-brown': {
-        24, 5, 138, 106, 191,
+        ),
+    ##  AfroAsiatic
+    'yellow-orange-brown': (
+        24,  # yellow
+        5,  # tan
+        106,  # orange
         192,  # reddish brown
-        },  #  AfroAsiatic
-    'green': {28, 119, 141, 330},  # Bantu
-##    'orange-brown': {},
-    'purple': {221, 222, 124, 324},  # NiloSaharan
-    'grey': {194, 199},  # Other...
+        138,  # dark tan
+        191,  # flame orange
+        ),
+    ## Bantu
+    'green': (
+        28,  # green
+        119,  # lime
+        141,
+        330,
+        ),
+    'purple': (
+        221, 222, 124, 324, 268),  # NiloSaharan
+    'grey': (194, 199),  # Other...
 ##    'white': {1},  # buried
     }
-d_color2family = {color: family for family in d_colorfamily2color.keys() for color in d_colorfamily2color[family]}
+d_color2family = {
+    color: family for family, colors in d_colorfamily2color.items()
+    for color in colors}
 
 ## Most common bricks:
 ## https://www.bricklink.com/catalogStats.asp?statID=C&itemType=P&inItemType=&catID=5
@@ -137,82 +156,22 @@ def main():
         ## fast
         a_2D_density = np.load('{}.npy'.format(affix1))
 
-##    x = []
-##    for row in range(240):
-##        for col in range(240):
-##            if a_2D_density[row][col] == 0:
-##                continue
-####            if a_2D_density[row][col] >= 200:
-####                continue
-##            x += [math.log(a_2D_density[row][col])]
-####            x += [a_2D_density[row][col]]
-##    print(len(x))
-##    import matplotlib.pyplot as plt
-##    plt.xlabel('Population Density (arbitrary unit)')
-##    plt.ylabel('Frequency')
-##    n, bins, patches = plt.hist(x, 50, normed=1, facecolor='g', alpha=0.75)
-####    hist, bins = np.histogram(a_2D_density, bins=50)
-####    width = 0.7 * (bins[1] - bins[0])
-####    center = (bins[:-1] + bins[1:]) / 2
-#####    plt.bar(center, hist, width=width)
-####    plt.bar(center, hist)
-##    plt.show()
-##    stop
-
-    ## 0-args.layers
+    ## Normalise population density.
     a_2D_density = normalize(a_2D_density, args)
-
-##    row = 0
-##    col = 0
-##    n = 240
-##    dy = cellsize*(row+0.5)*max(nrows, ncols)/n
-##    dy -= cellsize*(ncols-nrows)/2
-##    latitude = yllcorner+dy
-##    dx = cellsize*(col+0.5)*max(nrows, ncols)/n
-##    longitude = xllcorner+dx
-##    print(yllcorner,xllcorner,latitude,longitude,dy,dx,row,col)
-##    print(ncols, nrows, cellsize, yllcorner, xllcorner, yllcorner+cellsize*nrows, xllcorner+cellsize*ncols)
-##    stop
 
     ## slow - convert ethnicity polygons from json file to numpy array
     ## i.e. assign a tentative materialID to each 2D point
     a_2D_mIDs = json2array(args)
 
-    ## fast
+    ## Do a manual fix of zero density in the Eastern Desert in Egypt.
     a_2D_density = fix_zero_density_in_desert(
         a_2D_density, a_2D_mIDs, args)
 
-    ## Set zero density if no color. Not a good solution, because lakes will
-    ## randomly appear and disappear, because the polygons are poorly defined.
-##    a_2D_density = np.where(
-##        a_2D_mIDs!=0, a_2D_density, 0)
     ## Do this before finding buried plates.
     a_2D_density, a_2D_mIDs = color_as_nearby(args, a_2D_density, a_2D_mIDs)
 
-##    x = []
-##    for row in range(240):
-##        for col in range(240):
-##            if a_2D_density[row][col] == 0:
-##                continue
-####            if a_2D_density[row][col] >= 200:
-####                continue
-####            x += [math.log(a_2D_density[row][col])]
-##            x += [a_2D_density[row][col]]
-##    print(len(x))
-##    import matplotlib.pyplot as plt
-##    plt.xlabel('Population Density (arbitrary unit)')
-##    plt.ylabel('Frequency')
-##    n, bins, patches = plt.hist(x, 50, normed=1, facecolor='g', alpha=0.75)
-####    hist, bins = np.histogram(a_2D_density, bins=50)
-####    width = 0.7 * (bins[1] - bins[0])
-####    center = (bins[:-1] + bins[1:]) / 2
-#####    plt.bar(center, hist, width=width)
-####    plt.bar(center, hist)
-##    plt.show()
-##    stop
-
     ## fast
-    ## 0-args.layers
+    ## Identify how many plates are buried at each grid position.
     a_2D_buried = find_buried(a_2D_density, args.layers)
 
     ## slow
@@ -236,6 +195,50 @@ def main():
 ##    print(np.amin(a_gpw))
 ##    from collections import Counter
 ##    print(Counter([float(x) for x in np.nditer(a_gpw)]))
+
+    return
+
+
+def histogram2(a_2D_density, args):
+
+    path = 'density2_{}.png'.format(args.affix)
+    if os.path.isfile(path):
+        return
+
+    x = []
+    for row in range(args.n):
+        for col in range(args.n):
+            if a_2D_density[row][col] == 0:
+                continue
+            x += [a_2D_density[row][col]]
+
+    plt.xlabel('Normalised population density (arbitrary unit)')
+    plt.ylabel('Frequency')
+    n, bins, patches = plt.hist(
+        x, args.layers, normed=1, facecolor='g', alpha=0.75)
+    plt.savefig(path)
+    plt.close()
+
+    return
+
+
+def histogram1(a_2D_density, args):
+
+    path = 'density1_{}.png'.format(args.affix)
+    if os.path.isfile(path):
+        return
+
+    x = []
+    for row in range(args.n):
+        for col in range(args.n):
+            if a_2D_density[row][col] == 0:
+                continue
+            x += [math.log(a_2D_density[row][col])]
+    plt.xlabel('Natural logarithm of population density (arbitrary unit)')
+    plt.ylabel('Frequency')
+    n, bins, patches = plt.hist(x, 50, normed=1, facecolor='g', alpha=0.75)
+    plt.savefig(path)
+    plt.close()
 
     return
 
@@ -337,6 +340,10 @@ def color_as_nearby(args, a_2D_density, a_2D_mIDs):
     ## Strait of Sicily
     Libya_N_lat = 33+10/60
     Tunisia_E_lon = 11+35/60
+
+    ## Setting zero density if no color is not a good solution,
+    ## because lakes will randomly appear and disappear,
+    ## because the polygons are poorly defined.
 
     dist = 3
     for x in range(dist, a_2D_density.shape[0]-dist):
@@ -560,8 +567,10 @@ def find_connected_exposed(
     a_3D_angle = np.zeros(np.shape(a_3D_dIDs), int)
 
     gap = 'x'
+    ## Use symbol for buried bricks instead of materialID,
+    ## because surface exposed bricks/plates might have same color as
+    ## buried bricks/plates.
     buried = 'o'
-    buried = materialID_buried
 
     for layer in reversed(range(args.layers)):
         ## build plates horizontally and vertically in each layer
@@ -651,12 +660,15 @@ def append_designID_materialID_main(
         if materialID == gap:
             pos += len_group
             continue
+        ## Get materialID of buried bricks/plates.
+        if materialID == buried:
+            materialID = materialID_buried
         ## How many plates of max length will fit?
         ## 1st call of sub routine.
         for k in range(len_group//max_len):
             length = max_len
             ## Look up designID of given length.
-            designID = d_len2designIDs[h][width][length]
+            designID = d_len2dIDs[h][width][length]
             pos = append_designID_materialID_sub(
                 layer, designID, materialID,
                 a_3D_dIDs, a_3D_mIDs, a_3D_angle,
@@ -676,7 +688,7 @@ def append_designID_materialID_main(
             lengths = (mod,)
         ## 2nd call of sub routine.
         for length in lengths:
-            designID = d_len2designIDs[h][width][length]
+            designID = d_len2dIDs[h][width][length]
             pos = append_designID_materialID_sub(
                 layer, designID, materialID,
                 a_3D_dIDs, a_3D_mIDs, a_3D_angle,
@@ -697,33 +709,55 @@ def append_designID_materialID_sub(
     for j in range(length):
         row = row1*args.plate_size + i*irow+(pos+j)*jrow
         col = col1*args.plate_size + i*icol+(pos+j)*jcol
-        ## replace Southern plate
-        ## replace Eastern plate
+        ## Odd layer.
         if layer % 2 == 1 and j == length - 1:
             a_3D_dIDs[layer_insert][row][col] = designID
             a_3D_mIDs[layer_insert][row][col] = materialID
+            ## Can we replace with double width piece?
             if all([
+            ## Not the first row.
                 row % args.plate_size > 0,
-##                length > 1,
+##                length > 1,  # tmp!!!
+                ## Previous brick/plate identical to current one.
                 a_3D_dIDs[layer_insert][row-1][col] == designID,
-                a_3D_mIDs[layer_insert][row-1][col] == materialID,
+                any([
+                    materialID == materialID_buried,
+                    a_3D_mIDs[layer_insert][row-1][col] in (
+                        materialID, materialID_buried)]),
+                ## Same rotation as brick/plate to be connected with.
+                a_3D_angle[layer_insert][row][col] == a_3D_angle[layer_insert][row-1][col-1],
+                layer in (0, 2),
                 ]):
-                a_3D_dIDs[layer_insert][row][col] = d_len2designIDs[h][2][length]
+                a_3D_dIDs[layer_insert][row][col] = d_len2dIDs[h][2][length]
                 a_3D_dIDs[layer_insert][row-1][col] = -1
+                ## Do not extend buried color to edge.
+                if materialID == materialID_buried:
+                    a_3D_mIDs[layer_insert][row][col] = a_3D_mIDs[layer_insert][row-1][col]
                 a_3D_mIDs[layer_insert][row-1][col] = 0
                 if length == 1:
                     a_3D_angle[layer_insert][row][col] = 1
+        ## Even layer.
         elif layer % 2 == 0 and j == length - 1:
             a_3D_dIDs[layer_insert][row][col] = designID
             a_3D_mIDs[layer_insert][row][col] = materialID
+            ## Can we replace with double width piece?
             if all([
+                ## Not the first col.
                 col % args.plate_size > 0,
-##                length > 1,
+                ## Previous brick/plate identical to current one.
                 a_3D_dIDs[layer_insert][row][col-1] == designID,
-                a_3D_mIDs[layer_insert][row][col-1] == materialID,
+                any([
+                    materialID == materialID_buried,
+                    a_3D_mIDs[layer_insert][row][col-1] in (
+                        materialID, materialID_buried)]),
+                ## Same rotation as brick/plate to be connected with.
+                a_3D_angle[layer_insert][row][col] == a_3D_angle[layer_insert][row][col-1],
                 ]):
-                a_3D_dIDs[layer_insert][row][col] = d_len2designIDs[h][2][length]
+                a_3D_dIDs[layer_insert][row][col] = d_len2dIDs[h][2][length]
                 a_3D_dIDs[layer_insert][row][col-1] = -1
+                ## Do not extend buried color to edge.
+                if materialID == materialID_buried:
+                    a_3D_mIDs[layer_insert][row][col] = a_3D_mIDs[layer_insert][row][col-1]
                 a_3D_mIDs[layer_insert][row][col-1] = 0
                 if length == 1:
                     a_3D_angle[layer_insert][row][col] = 1
@@ -899,34 +933,11 @@ def largest_empty_rectangle(
 ##                    continue
                 ## Calculate area.
                 area = min_w*(dh+1)
-                if all([
-                    ## Find largest area.
-                    area > d_rectangle['area'],
-##                    ## But also find largest square area.
-##                    ## i.e. 6x6 > 4x10
-##                    min(dh+1, min_w) >= min(
-##                        d_rectangle['nrows'], d_rectangle['ncols']),
-                    ]):
+                ## Find largest area.
+                if area > d_rectangle['area']:
                     d_rectangle = {
                         'area': area, 'r2': r2, 'c2': c2,
                         'nrows': dh+1, 'ncols': min_w}
-##                elif all([
-##                    ## Find largest area.
-##                    area > d_rectangle['area'],
-##                    ## But also find largest square area.
-##                    ## i.e. 4x8 > 6x6
-##                    ]):
-##                    print(area, dh+1, min_w, 'r2c2', r2, c2, d_rectangle)
-##                    stopstop1
-##                elif all([
-##                    ## Find largest area.
-##                    min(dh+1, min_w) > min(
-##                        d_rectangle['nrows'], d_rectangle['ncols'])
-##                    ## But also find largest square area.
-##                    ## i.e. 4x8 > 6x6
-##                    ]):
-##                    print(area, dh+1, min_w, 'r2c2', r2, c2, d_rectangle)
-##                    stopstop2
 
             min_h = h[r2][c2]
             for dw in range(w[r2][c2]):
@@ -946,13 +957,8 @@ def largest_empty_rectangle(
 ##                    continue
                 ## Calculate area.
                 area = (dw+1)*min_h
-                if all([
-                    ## Find largest area.
-                    area > d_rectangle['area'],
-##                    ## But also find largest square area.
-##                    min(dw+1, min_h) >= min(
-##                        d_rectangle['nrows'], d_rectangle['ncols']),
-                    ]):
+                ## Find largest area.
+                if area > d_rectangle['area']:
                     d_rectangle = {
                         'area': area, 'r2': r2, 'c2': c2,
                         'nrows': min_h, 'ncols': dw+1}
@@ -964,6 +970,8 @@ def find_connected_buried_new(args, a_2D_buried, a_2D_density, a_2D_mIDs):
 
     print('''Finding connected 1x1 plates
 and replacing them with larger plates.''')
+
+    ## todo: get rid of modulo in this function since only looping every third layer now
 
     ## 3D array with design IDs at each 3D coordinate
     a_3D_dIDs = np.zeros((args.layers, args.n, args.n), int)
@@ -977,7 +985,7 @@ and replacing them with larger plates.''')
                 print('find_connected_buried', r1, c1)
             ## Loop from top to bottom. Substituting with bricks first
             ## instead of plates if possible.
-            for layer in range(args.layers-1, -1, -1):
+            for layer in range(args.layers-1, -1, -3):
                 while True:
                     d_rectangle = largest_empty_rectangle(
                         args, layer, r1, c1,
@@ -1062,208 +1070,6 @@ and replacing them with larger plates.''')
     return a_3D_dIDs
 
 
-def find_connected_buried_square_old(args, a_2D_buried):
-
-    print('finding connected 1x1 plates and replacing them with larger plates')
-
-    n = args.n
-    layers = args.layers
-    plate_size = args.plate_size
-
-    ## DO A WHILE LOOP UNTIL area_max IS EMPTY!!!
-
-    ## DO NOT CENTER BRICK IN A DIMENSION
-    ## IF FACING OTHER PLATE IN THAT DIRECTION - ie IF AT EDGE
-    ## 2015may20 - WTF did I mean by that, when I wrote it???
-
-    ## 3D array with design IDs at each 3D coordinate
-    a_3D_dIDs = np.zeros((layers, n, n), int)
-
-    ## loop baseplates from North to South
-    for row1 in range(int(n/plate_size)):
-        ## loop baseplates from West to East
-        for col1 in range(int(n/plate_size)):
-            if args.verbose:
-                print('find_connected_buried_square', row1, col1)
-            area_max = {layer: {'area': 0} for layer in range(layers)}
-            i = -1
-            ## Loop while there are areas to be filled.
-            while area_max:
-                i += 1
-                h = np.zeros((layers, plate_size, plate_size), int)  # heights
-                w = np.zeros((layers, plate_size, plate_size), int)  # widths
-                ## First loop.
-                ## North to South
-                for row2 in range(plate_size):
-                    row3 = row1*plate_size+row2
-                    ## West to East
-                    for col2 in range(plate_size):
-                        col3 = col1*plate_size+col2
-                        ## loop over layers after row and col
-                        ## to avoid looping over empty rows and cols in a layer
-##                        for layer in range(
-##                            a_2D_buried[row3][col3]):
-                        n = a_2D_buried[row3][col3]
-                        for layer in itertools.chain(
-                            itertools.chain(
-                                *zip(*(((i), (i-1), (i-2)) for i in range(
-                                    3*((n-1)//3), 0, -3)))),
-                            (0,), range(n-1, 3*((n-1)//3), -1)):
-                            ## skip if layer already filled
-                            if layer not in area_max.keys():
-                                continue
-                            ## skip if filled or blank already (not np.zeros)
-                            if a_3D_dIDs[layer][row3][col3] != 0:
-                                continue
-                            ## first row
-                            if row2 == 0:
-                                h[layer][row2][col2] = 1
-                            ## append to previous row
-                            else:
-                                h[layer][row2][col2] = h[layer][row2-1][col2]+1
-                            ## first col
-                            if col2 == 0:
-                                w[layer][row2][col2] = 1
-                            ## append to previous col
-                            else:
-                                w[layer][row2][col2] = w[layer][row2][col2-1]+1
-                            areas = [(0, None, None)]
-                            min_w = w[layer][row2][col2]
-                            for dh in range(h[layer][row2][col2]):
-                                h1 = dh+1
-                                w1 = w[layer][row2-dh][col2]
-                                if w1 == 0:
-                                    stop
-                                    break
-                                if w1 < min_w:
-                                    min_w = w1
-                                ## don't append area if 4x4 brick can't fit inside it
-                                if h1 < 4 or min_w < 4:
-                                    continue
-                                areas.append((h1*min_w, h1, min_w))
-                            min_h = h[layer][row2][col2]
-                            for dw in range(w[layer][row2][col2]):
-                                w1 = dw+1
-                                h1 = h[layer][row2][col2-dw]
-                                if h1 == 0:
-                                    stop
-                                    break
-                                if h1 < min_h:
-                                    min_h = h1
-                                ## don't append area if 4x4 brick can't fit inside it
-                                if min_h < 4 or w1 < 4:
-                                    continue
-                                areas.append((min_h*w1, min_h, w1))
-                            area, row_span, col_span = sorted(areas)[-1]
-                            if area > area_max[layer]['area']:
-                                area_max[layer] = {
-                                    'area': area,
-                                    'row_pos': row3, 'col_pos': col3,
-                                    'row_span': row_span, 'col_span': col_span}
-                                ## Do not place plates in lower layers
-                                ## beneath this plate.
-                                ## Instead place bricks.
-                                ## And afterwards place plates around this area.
-                                if layer % 3 == 0:
-                                    break
-                            ## layer loop
-                            continue
-                        ## col2 loop
-                        continue
-                    ## row2 loop
-                    continue
-
-                ## Second loop.
-##                for layer in range(layers):
-                n = layers
-                for layer in itertools.chain(
-                    itertools.chain(
-                        *zip(*(((i), (i-1), (i-2)) for i in range(
-                            3*((n-1)//3), 0, -3)))),
-                    (0,), range(n-1, 3*((n-1)//3), -1)):
-                    if layer not in area_max.keys():
-                        continue
-                    if area_max[layer]['area'] == 0:
-                        del area_max[layer]
-                        continue
-                    ## get row and col span
-                    row_span = area_max[layer]['row_span']
-                    col_span = area_max[layer]['col_span']
-                    ## calculate size of square plates to fill the area
-                    for size in reversed(sorted(d_dIDs_sq_plate.keys())):
-                        if size <= row_span and size <= col_span:
-                            break
-                    ## plate does not fit
-                    if size > row_span or size > col_span:
-                        del area_max[layer]
-                        continue
-                    ## get row and col pos and center the square pieces
-                    row_pos = area_max[layer]['row_pos']
-                    col_pos = area_max[layer]['col_pos']
-                    print('xxx', size, layer, row_pos, col_pos)
-                    print('yyy', a_3D_dIDs[5][26][100])
-                    ## Plate above this position.
-                    if a_3D_dIDs[layer][row_pos][col_pos] == -1:
-                        stoptmp
-                        continue
-    ##                ## center the square pieces (todo: see if fewer pieces if cornered)
-    ##                ## DONT CENTER IF MOBILE 48x48 ELEMENTS!!!
-    ##                row_pos += int(area_max[layer]['row_span']%size)
-    ##                col_pos += int(area_max[layer]['col_span']%size)
-                    ## calculate number of square plates fitting inside area
-                    plate_rows = row_span//size
-                    plate_cols = col_span//size
-                    mod = layer % 3
-                    ## append plate and empty spaces to 3D array
-                    for row_major in range(plate_rows):
-                        for col_major in range(plate_cols):
-                            ## empty spaces
-                            for row_minor in range(size):
-                                ## CHECK!!!
-                                row = row_pos-row_major*size-row_minor
-                                for col_minor in range(size):
-                                    col = col_pos-col_major*size-col_minor
-                                    ## Make empty space for larger plate.
-                                    a_3D_dIDs[layer][row][col] = -1
-                                    ## Make empty space for bricks.
-                                    if mod % 3 == 0:
-                                        for layer_below in range(layer-1, -1, -1):
-                                            a_3D_dIDs[
-                                                layer_below][row][col] = -1
-                                            if row == 26 and col == 100:
-                                                print('aaa', layer_below, a_3D_dIDs[5][26][100])
-                                    continue
-                                continue
-                            ## plate starts SE and extends to NW
-                            ## i.e. from high row to low row
-                            ## and from low col to high col
-                            row = row_pos-row_major*size
-                            col = col_pos-col_major*size
-                            ## insert large plate
-                            a_3D_dIDs[
-                                layer][row][col] = d_dIDs_sq_plate[size]
-                            ## Continue loop over col_major
-                            continue
-                        ## Continue loop over row_major.
-                        continue
-                    print('zzz', a_3D_dIDs[5][26][100], '\n')
-                    area_max[layer]['area'] = 0
-                    ## Place bricks beneath this plate before placing plates
-                    ## beneath, which overlap with the area of this plate.
-                    if mod % 3 == 0:
-                        break
-                    ## layer loop
-                    continue
-                ## while loop
-                continue
-            ## col1 loop
-            continue
-        ## row1 loop
-        continue
-
-    return a_3D_dIDs
-
-
 def find_buried(a_2D_density, layers):
 
     n = np.shape(a_2D_density)[0]
@@ -1324,38 +1130,21 @@ def normalize(a, args):
 
     n = np.shape(a)[0]
 
+    ## Plot population density histogram prior to normalisation.
+    histogram1(a, args)
+
     ## https://en.wikipedia.org/wiki/Normalization_(statistics)
     if args.norm == 'log10':
         amax = np.amax(a)
         a = np.log10(np.divide(a, amax/(10**layers)))
     elif args.norm == 'log':
         amax = np.amax(a)
-##        amin = np.amin(a[np.nonzero(a)])
-##        cnt = 0
-##        sumx = 0
-##        sumxx = 0
         for row in range(n):
             for col in range(n):
                 if a[row][col] == 0:
                     continue
-##                a[row][col] = max(1,math.log(
-##                    math.exp(layers)*a[row][col]/amax))
                 log = math.log(a[row][col])
-##                cnt += 1
-##                sumx += log
-##                sumxx += log*log
                 a[row][col] = max(1, args.layers*log/math.log(amax))
-##                _den = (math.log(amax)-math.log(amin))
-##                a[row][col] = layers*(log-math.log(amin))/_den
-####        mean = sumx/cnt
-####        var = sumxx/cnt-mean**2
-##        print(np.percentile(a,100))
-##        print(np.percentile(a,99.99))
-##        print(np.percentile(a,50))
-##        print(np.percentile(a,0.1))
-##        print(np.percentile(a,0.01))
-##        stop
-####        a = np.log(np.divide(a, amax/(math.exp(layers))))
     elif args.norm == 'unity':
         amin = 0
         amax = np.amax(a)
@@ -1375,6 +1164,9 @@ def normalize(a, args):
                 a[row][col] = 1
             else:
                 a[row][col] = math.ceil(a[row][col])
+
+    ## Plot population density histogram after normalisation.
+    histogram2(a, args)
 
     return a
 
@@ -1401,12 +1193,12 @@ def json2array(args):
     ## Define super classes.
     d_family2color['Niger-Congo'] = d_family2color['West Atlantic']
     d_family2color['Nilo-Saharan'] = d_family2color['Nilotic']
-    ## Make Afrikaans black.
+    ## Make Afrikaans black or dark grey.
     assert 26 not in d_family2color.values()
-    d_family2color['Afrikaans'] = 26
     assert 194 not in d_family2color.values()
-    d_family2color['Other'] = 194
     assert 199 not in d_family2color.values()
+    d_family2color['Afrikaans'] = 26
+    d_family2color['Other'] = 194
     d_family2color['Miscellaneous / Unclassified'] = 199
 
     print(d_family2color)
@@ -1451,8 +1243,6 @@ def json2array(args):
                 'KOMA',  # Sudan
                 ## Chari-Nile > Berta
                 'BERTA',
-                ## Chari-Nile > Central Sudanic
-                'BAREA',
                 ## Chari-Nile > Eastern Sudanic
                 'GAAM',
                 'MUN',
@@ -1488,7 +1278,16 @@ def json2array(args):
             continue
         ## Afrikaans
         elif family == 'Miscellaneous / Unclassified':
-            if max_lat < -20:
+            if ethnicity == 'YEKE':
+                family = 'Bantu'
+            elif ethnicity in (
+                ## http://en.wikipedia.org/wiki/Kambari_languages
+                'KAMBARI',
+                ## http://en.wikipedia.org/wiki/Kudu-Camo_language
+                'KUDU',
+                ):
+                family = 'Niger-Congo'
+            elif max_lat < -20:
                 family = 'Afrikaans'
                 assert ID in (
                     153,  # Johannesburg
@@ -1506,14 +1305,7 @@ def json2array(args):
                 ):
                 pass
             else:
-                assert ethnicity in (
-                    'YEKE',
-                    'DARI',  # Cameroon
-                    ## http://en.wikipedia.org/wiki/Kambari_languages
-                    'KAMBARI',  # Nigeria
-                    ## http://en.wikipedia.org/wiki/Kudu-Camo_language
-                    'KUDU',  # Nigeria
-                    )
+                assert ethnicity == 'DARI'  # Cameroon
         elif family == 'Other':
             ## http://en.wikipedia.org/wiki/Daisu_language
             if ethnicity == 'DAISU':
@@ -1593,9 +1385,8 @@ def json2array(args):
             except KeyError:
                 least_common = c.most_common()[-1]
                 ## Color as least common and preferably use cheap colors.
-                for u in ubiquitous:
-                    if c[u] == 1:
-                        color = u
+                for color in d_colorfamily2color[color_family]:
+                    if c[color] == 1:
                         break
                 else:
                     color = least_common[0]
@@ -1603,7 +1394,7 @@ def json2array(args):
             for row, col in l_within:
                 a_2D_mIDs[row][col] = color
 
-            if color in (1, 194, 199):
+            if color in (194, 199):
                 print(len(l_within), color, ID, family, ethnicity, min_lat, min_lon, max_lat, max_lon)
 
         ## Color possibly already assigned to all points in polygon.
@@ -1735,24 +1526,20 @@ def generate_line(
     if y >= a_2D_density[row][col]:
         return None
 
-    ## skip parts of array not covered by GeoJSON array
-    ## DO THIS BEFORE CONNECTING BRICKS!!!
-    ## INSTEAD COLOR AS NEIGBOUR!!
-    ## OR USE ALL 4 CORNERS INSTEAD OF JUST CENTER!!!
-    ## Skip ocean.
+    ## Skip ocean and land outside Africa.
     if a_2D_mIDs[row][col] == 0:
         return None
 
-##                print(row,col,latitude,longitude)
-
+    ## Replacement brick/plate.
     if a_3D_mIDs[y][row][col] != 0:
         materialID = a_3D_mIDs[y][row][col]
-    ## white/buried
+    ## 1x1 plate, white/buried
     elif y < a_2D_buried[row][col]:
         materialID = materialID_buried
-    ## exposed/colored
+    ## 1x1 plate, exposed/colored
     else:
         materialID = a_2D_mIDs[row][col]
+
     ## 1x1 plate
     if a_3D_dIDs[y][row][col] == 0:
         designID = 3024  # 1x1 plate
@@ -1775,6 +1562,9 @@ def generate_line(
 
 def format_line(refID, designID, materialID, row, y, col, a_3D_angle):
 
+    if materialID == materialID_buried:
+        materialID = 1
+
     ## LEGO dimensions
     ## http://upload.wikimedia.org/wikipedia/commons/1/1a/Lego_dimensions.svg
     P = 0.8  # cm
@@ -1795,13 +1585,11 @@ def format_line(refID, designID, materialID, row, y, col, a_3D_angle):
         angle = 0
         dtx = 0
         dtz = 0
-    if a_3D_angle[y][row][col]:
+    if a_3D_angle[y][row][col] and designID != 4186:
         angle = 90 - angle
     line += ' angle="{}" ax="0" ay="1" az="0"'.format(angle)
-##    line += ' tx="{0:.1f}"'.format(row*-P)
     line += ' tx="{0:.1f}"'.format(row*-P + dtx)
     line += ' ty="{0:.2f}"'.format(y*h)
-##                    line += ' ty="{0}"'.format((y-z)*h)
     line += ' tz="{0:.1f}"'.format(col*P + dtz)
     line += '/>\n'
 
@@ -1892,6 +1680,14 @@ def read_gpw(file_gpw):
 
 
 if __name__ == '__main__':
+##N/row+       E/col+/
+##\            /
+## \          /
+##  \        /
+##   \      /
+##    \    /
+##     \  /
+##      \/
 ####    seq = 44*['x']+3*['o']+['b']
 ####    seq = find_consecutive(seq)
 ####    print(seq)
