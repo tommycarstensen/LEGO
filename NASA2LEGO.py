@@ -4,7 +4,88 @@
 ## Acknowledgments:
 ## Martin Haspelmath
 ## William Reno
-## Friedrich Riha, Manj Sandhu, Mutua Matheka, Jane Walsh
+## Friedrich Riha, Manj Sandhu, Joshua Randall, Mutua Matheka, Jane Walsh
+## Wikimedia Foundation, Inc., Glottolog, Ethnologue
+## Python Software Foundation
+## Free Software Foundation
+## GNU Project
+## NASA Shuttle Radar Topography Mission (SRTM)
+## NASA Socioeconomic Data and Applications Center (SEDAC)
+## Felix 2001
+## The LEGO company.
+
+## todo: add transparent plats for:
+## http://en.wikipedia.org/wiki/List_of_lakes_by_area
+## 3) Lake Victoria
+## 6) Lake Tanganyika
+## 9) Lake Malawi
+## 22) Turkana
+## 28) Albert
+## 29) Mweru
+## Lake Chad
+## Lake Tana / Blue Nile origin
+
+## http://en.wikipedia.org/wiki/List_of_rivers_of_Africa
+## http://en.wikipedia.org/wiki/Geography_of_Africa#Rivers
+## !1) Nile River
+## 2!) Congo River
+## 3) Blue Nile
+## 3!) Niger
+## 3) Uele
+## 3!) Zambezi
+## 3) Kasai
+## 4!) Senegal???
+## 4!) Vaal/Orange
+## 4) Benue!
+## 5!) Volta River and tributaries: black, white, red
+## 6) White Volta
+## 6) Sassandra
+## 6) Sanaga
+## 6) Chari
+## 6) Atbara
+## 6!) Jubba
+## 6) Ruvuma
+## 6!) Okavango
+## 6!) Limpopo
+## http://en.wikipedia.org/wiki/Rufiji_River
+
+d_mountains = {}
+d_rivers = {
+    'Nile': (30, 10, 31, 6),
+    'Congo': (-6, -4, 12, 27),
+    'Niger': (13, 60*0.86, -3, -60*0.33),
+    'Zambezi': (-18, -34, 36, 28),
+    'Senegal': (15, 47, -16, -31),
+    'Vaal': (-29, -4, 23, 38),
+    'Volta': (5, 46, 0, -41),
+    'Jubba': (0, 0.2495*60, 42, 60*0.6307),
+    'Okavango': (-18, -57, 22, 29),
+    'Limpopo': (-25, -10, 33, 35),
+    'WhiteNile': (-2, -17, 29, 20),
+    'BlueNile': (12, 0, 37, 15),
+    'BlueNile': (15, 38, 32, 32),
+    'Rufiji': (-8, 0, 39, 20),
+    }
+d_lakes = {
+    'Lake Victoria': (-1, 0, 33, 0),
+    'Lake Tanganyika': (-6, -30, 29, 50),
+    'Lake Malawi': (-12, -11, 34, 22),
+    'Lake Turkana': (3, 35, 36, 7),
+    'Lake Albert': (1, 41, 30, 55),
+    'Lake Mweru': (-9, 0, 28, 43),
+    'Lake Chad': (13, 0, 14, 0),
+    'Lake Tana': (12, 0, 37, 15),
+    }
+
+## todo: Slope 30 1 x 1 x 2/3 for mountains or anything above an altitude threshold
+## try 3000m or 2000m
+## http://en.wikipedia.org/wiki/List_of_highest_mountain_peaks_of_Africa
+## http://en.wikipedia.org/wiki/Geography_of_Africa#Plateau_region
+## http://en.wikipedia.org/wiki/Geography_of_Africa#Mountains
+## https://pypi.python.org/pypi/SRTM.py
+## https://github.com/tkrajina/srtm.py
+
+## Flags for: Yoruba, Igbo, Fula, Shona, Zulu
 
 import numpy as np
 import math
@@ -33,7 +114,8 @@ d_len2dIDs = {
         ## width 1
         1: {1: 3005, 2: 3004, 3: 3622, 4: 3010, 6: 3009, 8: 3008},
         ## width 2
-        2: {1: 3004, 2: 3003, 3: 3002, 4: 3001, 6: 44237, 8: 3007},
+        2: {1: 3004, 2: 3003, 3: 3002, 4: 3001, 6: 2456, 8: 3007},
+##        2: {1: 3004, 2: 3003, 3: 3002, 4: 3001, 6: 44237, 8: 93888},
         },
     }
 d_dIDs2dim = {}
@@ -55,44 +137,42 @@ materialID_grey = 194
 for k, v in d_dIDs_sq_plate.items():
     d_dIDs2dim[v] = {'dim0': k, 'dim1': k}
 d_dIDs2dim[3001] = {'dim0': 2, 'dim1': 4}
-d_dIDs2dim[44237] = {'dim0': 2, 'dim1': 6}
-d_dIDs2dim[93888] = {'dim0': 2, 'dim1': 8}
-## dx, dz, ID
-d_plate2brick = {8: 93888, 6: 44237, 4: 3001}
-##d_brick_replace = {
-##    8: ((0, 0, 93888), (0, 2, 93888),),
-##    6: ((0, 0, 44237), (0, 2, 44237),),
-##    4: ((0, 0, 3001),),
-##    }
+d_dIDs2dim[d_len2dIDs[3][2][6]] = {'dim0': 2, 'dim1': 6}
+d_dIDs2dim[d_len2dIDs[3][2][8]] = {'dim0': 2, 'dim1': 8}
 ## Ubiquitous material IDs; i.e. 1x1 and 2x4 bricks available in PAB.
 ubiquitous = {
     1,  # White
     21,  # Red
     23,  # Blue
     24,  # Yellow
-    5,  # Tan
     26,  # Black
     28,  # Green
+    5,  # Tan
+    106,  # Orange
     194,  # Stone Grey
     199,  # Stone Grey
-    106,  # Orange
     192,  # Reddish Brown
     119,  # Lime
-    222,  # Light Purple / Light Pink
+##    222,  # Light Purple / Light Pink
     }
 
 materialID_buried = 999
 
 ## Tuples are sorted from common to rare.
 d_colorfamily2color = {
-    'red': (21, 154),  # Khoisan
+    'red': (
+        21,  # red
+        154,  # new dark red
+##        192,  # reddish brown
+        ),  # Khoisan
     'black':(26,),  #  IndoEuropean/Afrikaans
     ## Niger-Congo
     'blue': (
         23, 102, 140,
         1,  # White looks good with bright blue colors and is cheaper.
-        323,  # Aqua available on BL.
-##        321, 322,  # Dark Azure 321, Medium Azure 322
+        323,  # Aqua / Unikitty Blue (1x1 plate out of stock, but got from BL)
+##        322, # Medium Azure 322 (1x1 brick - 1x1 plate out of stock)
+####        321, # # Dark Azure 321 (1x2 plate - no 1x1 size)
         ),
     ##  AfroAsiatic
     'yellow-orange-brown': (
@@ -102,22 +182,149 @@ d_colorfamily2color = {
         192,  # reddish brown
         138,  # dark tan
         191,  # flame orange
+        226,  # cool yellow / bright light yellow
         ),
     ## Bantu
     'green': (
         28,  # green
         119,  # lime
-        141,
-        330,
+        141,  # earth green / dark green
+        330,  # olive
+        326,  # Spring Yellowish Green / Yellowish Green (only 1x1 plate available)
+##        151,  # / Sand Green (got 500 1x1 plates from BL, but otherwise NA)
         ),
     'purple': (
-        221, 222, 124, 324, 268),  # NiloSaharan
-    'grey': (194, 199),  # Other...
+        222,  # Light Purple / Bright Pink
+        124,  # Bright Reddish Violet / Magenta
+        324,  # Medium Lavender
+##        268,  # Medium Lilac
+##        221,  # Bright Purple / Dark Pink (discontinued in 2004)
+        ## "The medium lilac element ID 4224857 is out of stock
+        ## and we have no plans on bringing it back at this time."
+        ),  # NiloSaharan
+    'grey': (
+        194,  # medium stone grey
+        199,  # dark stone grey
+        ),  # Other...
 ##    'white': {1},  # buried
     }
 d_color2family = {
     color: family for family, colors in d_colorfamily2color.items()
     for color in colors}
+
+d_max_len = {
+    ## plates
+    1: {
+        ## width 1
+        1: {
+            1: 12,
+            26: 10, 5: 10, 192: 10, 194: 10,
+            21: 8, 23: 8, 24: 8, 28: 8, 199: 8,
+            106: 6, 102: 6, 141: 6, 140: 6, 154: 6,
+            119: 4, 324: 4, 222: 4,
+            330: 2,
+            },
+        2: {
+            1: 12, 26: 12, 199: 12, 194: 12,
+            21: 10, 5: 10,
+            23: 8, 24: 8, 28: 8, 192: 8,
+            106: 6, 119: 6, 222: 6,
+            154: 4, 141: 4,
+            330: 1,
+            },
+        },
+    ## bricks
+    3: {
+        ## width 1
+        1: {
+            1: 8, 2: 3004, 3: 3622, 4: 3010, 6: 3009,
+            191: 4,
+            },
+        ## width 2
+        2: {
+            1: 8,
+            191: 1, 303: 1, 324: 1,
+            },
+        },
+    }
+
+## Not available in replacement parts.
+d_NA = {
+    ## plates
+    1: {
+        ## width 1
+        1: {
+            8: {191, 221, 138, 330, 330, 138, 221, 191, 191, 326, 124,},
+            6: {330, 141, 221, 268, 323, 326, 151,},
+            4: {330, 221, 268, 323, 326, 151,},
+            3: {138, 330, 324, 138, 124, 221, 268, 323, 106, 102,},
+            2: {323, 326, 322,},  # Aqua, Medium Azure
+##            1: {321},  # Dark Azure
+            1: {
+                322,  # medium azure
+##                323,  # aqua / unikitty blue (got 500 1x1 plates from BL)
+                268,  # medium lilac (dark purple)
+                221,  # bright purple (dark pink)
+                321,  # dark azure
+                151,  # sand green
+                },
+            },
+        ## width 2
+        2: {
+            8: {221, 268, 330, 326, 28,},
+            6: {221, 268, 326, 141, 124,},
+            ## 3020
+            4: {221, 268, 323, 326, 222, 151, 222, 124,},
+            ## 3021
+            3: {191, 124, 330, 221, 268, 323, 326, 154, 119, 102, 151, 326,},
+            2: {
+                221, 141, 330, 324, 221, 268, 323, 330, 326, 222, 138,
+                124, 151, 330, 124, 330, 140, 140, 330, 321,
+                },
+            1: {},
+            },
+        },
+    ## bricks
+    3: {
+        ## width 1
+        1: {
+            8: {
+                221, 268, 222, 124, 323, 322, 326, 119, 324, 102, 106,
+                140, 141,
+                28,  # green available as replacement but 0.42GBP VS two 1x4 = 0.12GBP
+                },
+            6: {
+                191, 221, 140, 324, 221, 268, 140, 323, 324, 222, 151, 102,
+                323, 141, 326, 321,
+                119,  # lime available as replacement but 0.38GBP
+                },
+            4: {268, 323, 326, 151,},
+            3: {
+                221, 268, 138, 124, 323, 322, 326, 141, 324, 140, 154, 191,
+                321,
+                },
+            2: {326,},  # Spring Yellowish Green / Yellowish Green (from 2015)
+            1: {
+                226, 326,
+                321,  # dark azure
+                },  # Cool Yellow (226), Spring Yellowish Green (326)
+            },
+        ## width 2
+        2: {
+            8: {221, 268, 330, 222, 138, 324, 323, 322, 28, 192, 28,},
+            6: {221, 330, 221, 268, 326, 106, 119, 124, 324,},
+            4: {140, 124,},
+            3: {191, 330, 221, 268, 324, 323, 322, 326,},
+            2: {
+                191, 330, 324, 323, 326, 141, 330, 151, 141, 330, 124, 321,
+                124, 330, 124,
+                },
+            1: {},
+            },
+        },
+    }
+d_NA[1][2][1] = d_NA[1][1][2]
+d_NA[3][2][1] = d_NA[3][1][2]
 
 ## Most common bricks:
 ## https://www.bricklink.com/catalogStats.asp?statID=C&itemType=P&inItemType=&catID=5
@@ -145,7 +352,7 @@ def main():
 ##    print(nrows2/fractions.gcd(nrows2,n))
 ##    stop
 
-    affix1 = 'out_NASA2LEGO/{0}_{1:d}x{1:d}_dens{2}'.format(
+    affix1 = 'lxfml/{0}_{1:d}x{1:d}_dens{2}'.format(
         args.affix, args.n, args.density)
 
     ## 0-args.layers
@@ -161,7 +368,7 @@ def main():
 
     ## slow - convert ethnicity polygons from json file to numpy array
     ## i.e. assign a tentative materialID to each 2D point
-    a_2D_mIDs = json2array(args)
+    a_2D_mIDs = json2array(args, a_2D_density)
 
     ## Do a manual fix of zero density in the Eastern Desert in Egypt.
     a_2D_density = fix_zero_density_in_desert(
@@ -172,17 +379,31 @@ def main():
 
     ## fast
     ## Identify how many plates are buried at each grid position.
-    a_2D_buried = find_buried(a_2D_density, args.layers)
+    a_2D_buried = find_buried(args, a_2D_density, args.layers, a_2D_mIDs)
 
     ## slow
     ## 0-(args.layers-1)
-    a_3D_dIDs = find_connected_buried_new(
+    a_3D_dIDs = find_connected_buried(
         args, a_2D_buried, a_2D_density, a_2D_mIDs)
 
     ##
     a_3D_dIDs, a_3D_mIDs, a_3D_angle = find_connected_exposed(
         args, a_2D_density, a_2D_buried,
-        a_3D_dIDs, a_2D_mIDs)
+        a_2D_mIDs, a_3D_dIDs)
+
+##    ## Add rivers and lakes.
+##    ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
+##        '{}.asc'.format(args.affix))
+##    for key, coord in itertools.chain(d_rivers.items(), d_lakes.items()):
+##        _den = cellsize * max(nrows, ncols)
+##        lat = coord[0]+coord[1]/60
+##        lon = coord[2]+coord[3]/60
+##        row = int(round(args.n*(lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5, 0))
+##        col = int(round(args.n*(lon-xllcorner)/_den-0.5, 0))
+##        print(key, coord, lat, lon, row, col)
+##        assert a_3D_dIDs[a_2D_density[row][col]][row][col] == 0
+##        a_3D_dIDs[a_2D_density[row][col]][row][col] = 3024
+##        a_3D_mIDs[a_2D_density[row][col]][row][col] = 40
 
     ## slow
     lxfml = '{}_y{:d}_{}.lxfml'.format(affix1, args.layers, args.norm)
@@ -364,8 +585,10 @@ def color_as_nearby(args, a_2D_density, a_2D_mIDs):
             ## Including this deletion does not cause problems in Egypt.
             ## todo: generate map with and without!!!
             if a_2D_density[x][z] == 1:
-                if args.verbose:
-                    print('near zero density', x, z)
+##                if args.verbose:
+##                    print(
+##                        'near zero density (e.g. outside Africa and coast)',
+##                        x, z, lat, lon)
                 a_2D_density[x][z] = 0
                 continue
 ##            if lat > Yemen_South and lon > Israel_West:
@@ -454,7 +677,7 @@ def color_as_nearby(args, a_2D_density, a_2D_mIDs):
 ##                lon < Sinai_South_lon,
                 lon < Sharm_elSheikh_lon,
                 a_2D_density[x][z] < args.layers/3]):
-##                a_2D_mIDs[x][z] = 268  # medium lilac
+##                a_2D_mIDs[x][z] = 221
                 a_2D_density[x][z] = 0
                 continue
 ##            ## Clear brick(s) in the Red Sea south of the Sinai peninsula.
@@ -488,7 +711,7 @@ def argparser():
         help='Size of base plates to build on.')
 
     parser.add_argument(
-        '--plate_cnt', default=5,
+        '--plate_cnt', default=5, type=int,
         help='Number of base plates along one dimension.')
 
     parser.add_argument(
@@ -559,7 +782,7 @@ def asc2np(args, affix1):
 
 def find_connected_exposed(
     args, a_2D_density, a_2D_buried,
-    a_3D_dIDs, a_2D_mIDs):
+    a_2D_mIDs, a_3D_dIDs):
 
     print('find connected exposed plates and remaining buried plates')
 
@@ -590,7 +813,7 @@ def find_connected_exposed(
             h = 3  # bricks
             layer_insert = layer-2
             layer_remove = (layer, layer-1)
-            max_len = 6  # 1x8 (3008) available in few colors
+            max_len = 8  # 1x8 (3008) available in few colors
         else:
             h = 1  # plates
             layer_insert = layer
@@ -625,9 +848,13 @@ def find_connected_exposed(
                         ## Continue loop over j.
                         continue
                     ## No bricks along line.
-                    if seq == args.n*[gap]:
+                    if seq == args.plate_size*[gap]:
                         continue
-                    seq = find_consecutive(seq, gap=gap, buried=buried)
+                    ## Same color for entire sequence.
+                    if seq == args.plate_size*[seq[0]]:
+                        pass
+                    else:
+                        seq = find_consecutive(args, seq, h, gap=gap, buried=buried)
                     append_designID_materialID_main(
                         args, seq, layer, i, irow, jrow, icol, jcol,
                         max_len, row1, col1,
@@ -663,17 +890,50 @@ def append_designID_materialID_main(
         ## Get materialID of buried bricks/plates.
         if materialID == buried:
             materialID = materialID_buried
+
+        ## 1x1 brick not available, but 1x1 plate available.
+        if h == 3 and materialID in d_NA[h][1][1] and materialID not in d_NA[1][1][1]:
+            ## 1x1 plate if 1x1 brick not available
+            ## e.g. cool yellow and spring yellowish green / unikitty green
+            h_group = 1
+            layer_ins = layer
+            layer_rem = ()
+        ## 1x1 plate not available, but 1x1 brick available.
+        elif layer >= 1 and materialID in d_NA[h][1][1] and not materialID in d_NA[3][1][1]:
+            ## 1x1 brick if 1x1 plate not available
+            ## e.g. medium azure, medium lilac, dark pink, sand green
+            h_group = 3
+            layer_ins = layer-2
+            layer_rem = (layer, layer-1)
+        ## 1x1 plate and 1x1 brick available.
+        else:
+            h_group = h
+            layer_ins = layer_insert
+            layer_rem = layer_remove
+
+        ## What is the longest length of this color and size?
+        try:
+            max_len = min(8, d_max_len[h_group][width][materialID])
+        except KeyError:
+            for max_len in (8, 6, 4, 3, 2, 1):
+                if materialID in d_NA[h_group][width][max_len]:
+                    continue
+                break
+
         ## How many plates of max length will fit?
         ## 1st call of sub routine.
         for k in range(len_group//max_len):
-            length = max_len
-            ## Look up designID of given length.
-            designID = d_len2dIDs[h][width][length]
-            pos = append_designID_materialID_sub(
-                layer, designID, materialID,
-                a_3D_dIDs, a_3D_mIDs, a_3D_angle,
-                pos, i, irow, jrow, icol, jcol, length, row1, col1, args,
-                layer_insert, layer_remove, h)
+            for length in (max_len,):
+                designID = d_len2dIDs[h_group][width][length]
+                pos = append_designID_materialID_sub(
+                    layer, designID, materialID,
+                    a_3D_dIDs, a_3D_mIDs, a_3D_angle,
+                    pos, i, irow, jrow, icol, jcol, length, width,
+                    row1, col1, args,
+                    layer_insert=layer_ins, layer_remove=layer_rem,
+                    h=h_group)
+##                if a_3D_dIDs[3][127][113] == 3022 or a_3D_mIDs[3][127][113] == 330:
+##                    stop3
         ## How much space left after filling with plates of max length?
         mod = len_group % max_len
         ## No space left.
@@ -681,21 +941,64 @@ def append_designID_materialID_main(
             continue
         assert max_len <= 8
         if mod == 7:
-            lengths = (4,3)
+            if not any([
+                materialID in d_NA[h_group][width][4],
+                materialID in d_NA[h_group][width][3],
+                ]):
+                lengths = (4, 3)
+            elif not materialID in d_NA[h_group][width][6]:
+                lengths = (6, 1)
+            elif not materialID in d_NA[h_group][width][4]:
+                lengths = (4, 2, 1)
+            elif not materialID in d_NA[h_group][width][3]:
+                lengths = (3, 2, 2)
+            else:
+                lengths = (2, 2, 2, 1)
         elif mod == 5:
-            lengths = (3,2)
+            if not any([
+                materialID in d_NA[h_group][width][3],
+                materialID in d_NA[h_group][width][2],
+                ]):
+                lengths = (3, 2)
+            elif not materialID in d_NA[h_group][width][4]:
+                lengths = (4, 1)
+            elif not materialID in d_NA[h_group][width][2]:
+                lengths = (2, 2, 1)
+            else:
+                lengths = (1, 1, 1, 1, 1)
         else:
-            lengths = (mod,)
+            if mod > 1 and materialID in d_NA[h_group][width][mod]:
+                ## 2, 4, 6
+                if mod not in (1, 3):
+                    assert mod % 2 == 0
+                    if not materialID in d_NA[h_group][width][mod]:
+                        lengths = int(mod / 2) * (2,)
+                    else:
+                        lengths = int(mod / 1) * (1,)
+                ## 1, 3
+                else:
+                    lengths = mod * (1,)
+            else:
+                lengths = (mod,)
         ## 2nd call of sub routine.
         for length in lengths:
-            designID = d_len2dIDs[h][width][length]
+            designID = d_len2dIDs[h_group][width][length]
             pos = append_designID_materialID_sub(
                 layer, designID, materialID,
                 a_3D_dIDs, a_3D_mIDs, a_3D_angle,
-                pos, i, irow, jrow, icol, jcol, length, row1, col1, args,
-                layer_insert, layer_remove, h)
+                pos, i, irow, jrow, icol, jcol, length, width,
+                row1, col1, args,
+                layer_ins, layer_rem, h_group)
+##            if a_3D_dIDs[3][127][113] == 3022 or a_3D_mIDs[3][127][113] == 330:
+##                print(max_len, mod, lengths, length)
+##                stop2
         ## Continue loop over materialID groups.
         continue
+
+##    if a_3D_dIDs[3][127][113] == 3022 or a_3D_mIDs[3][127][113] == 330:
+##        stop1
+##    if a_3D_dIDs[6][103][105] == 3007 or a_3D_mIDs[6][103][105] == 28:
+##        stop1
 
     return
 
@@ -703,7 +1006,7 @@ def append_designID_materialID_main(
 def append_designID_materialID_sub(
     layer, designID, materialID,
     a_3D_dIDs, a_3D_mIDs, a_3D_angle,
-    pos, i, irow, jrow, icol, jcol, length, row1, col1, args,
+    pos, i, irow, jrow, icol, jcol, length, width, row1, col1, args,
     layer_insert, layer_remove, h):
 
     for j in range(length):
@@ -715,18 +1018,23 @@ def append_designID_materialID_sub(
             a_3D_mIDs[layer_insert][row][col] = materialID
             ## Can we replace with double width piece?
             if all([
-            ## Not the first row.
+                ## Not the first row.
                 row % args.plate_size > 0,
-##                length > 1,  # tmp!!!
                 ## Previous brick/plate identical to current one.
                 a_3D_dIDs[layer_insert][row-1][col] == designID,
+                ## Previous color identical or buried.
                 any([
                     materialID == materialID_buried,
                     a_3D_mIDs[layer_insert][row-1][col] in (
                         materialID, materialID_buried)]),
                 ## Same rotation as brick/plate to be connected with.
-                a_3D_angle[layer_insert][row][col] == a_3D_angle[layer_insert][row-1][col-1],
-                layer in (0, 2),
+                a_3D_angle[layer_insert][row][col] == a_3D_angle[layer_insert][row-1][col],
+                ## Color available.
+                all([
+                    materialID not in d_NA[h][2][length],
+                    a_3D_mIDs[layer_insert][row-1][col] not in
+                    d_NA[h][2][max(length, width)],
+                    ]),
                 ]):
                 a_3D_dIDs[layer_insert][row][col] = d_len2dIDs[h][2][length]
                 a_3D_dIDs[layer_insert][row-1][col] = -1
@@ -736,6 +1044,24 @@ def append_designID_materialID_sub(
                 a_3D_mIDs[layer_insert][row-1][col] = 0
                 if length == 1:
                     a_3D_angle[layer_insert][row][col] = 1
+                if any([
+                    a_3D_dIDs[3][127][113] == 3022,
+                    a_3D_mIDs[3][127][113] == 330,
+                    a_3D_dIDs[6][103][105] == 3007,
+                    a_3D_mIDs[6][103][105] == 28,
+                    ]):
+                    print('h', h, 'l', length, 'w', width)
+                    print('mID', materialID)
+                    print('NA', d_NA[h][2][max(length, width)])
+                    print('max(l, w)', max(length, width))
+                    print('rowcol', row, col)
+                    print('layer', layer, layer_insert)
+                    for x in range(27):
+                        print(x, a_3D_mIDs[x][127][113])
+                    stop4a
+##            if a_3D_dIDs[3][127][113] == 3022 or a_3D_mIDs[3][127][113] == 330:
+##                print(h, length)
+##                stop4b
         ## Even layer.
         elif layer % 2 == 0 and j == length - 1:
             a_3D_dIDs[layer_insert][row][col] = designID
@@ -746,12 +1072,19 @@ def append_designID_materialID_sub(
                 col % args.plate_size > 0,
                 ## Previous brick/plate identical to current one.
                 a_3D_dIDs[layer_insert][row][col-1] == designID,
+                ## Previous color identical or buried.
                 any([
                     materialID == materialID_buried,
                     a_3D_mIDs[layer_insert][row][col-1] in (
                         materialID, materialID_buried)]),
                 ## Same rotation as brick/plate to be connected with.
                 a_3D_angle[layer_insert][row][col] == a_3D_angle[layer_insert][row][col-1],
+                ## Color available.
+                all([
+                    materialID not in d_NA[h][2][length],
+                    a_3D_mIDs[layer_insert][row][col-1] not in
+                    d_NA[h][2][max(length, width)],
+                    ]),
                 ]):
                 a_3D_dIDs[layer_insert][row][col] = d_len2dIDs[h][2][length]
                 a_3D_dIDs[layer_insert][row][col-1] = -1
@@ -761,6 +1094,24 @@ def append_designID_materialID_sub(
                 a_3D_mIDs[layer_insert][row][col-1] = 0
                 if length == 1:
                     a_3D_angle[layer_insert][row][col] = 1
+                if any([
+                    a_3D_dIDs[3][127][113] == 3022,
+                    a_3D_mIDs[3][127][113] == 330,
+                    a_3D_dIDs[6][103][105] == 3007,
+                    a_3D_mIDs[6][103][105] == 28,
+                    ]):
+                    print('h', h, 'l', length, 'w', width)
+                    print('mID', materialID)
+                    print('NA', d_NA[h][2][max(length, width)])
+                    print('max(l, w)', max(length, width))
+                    print('rowcol', row, col)
+                    print('layer', layer, layer_insert)
+                    for x in range(27):
+                        print(x, a_3D_mIDs[x][127][113])
+                    stop5a
+##            if a_3D_dIDs[3][127][113] == 3022 or a_3D_mIDs[3][127][113] == 330:
+##                print(h, length)
+##                stop5b
         else:
             a_3D_dIDs[layer_insert][row][col] = -1
             a_3D_mIDs[layer_insert][row][col] = 0
@@ -773,27 +1124,34 @@ def append_designID_materialID_sub(
     return pos
 
 
-def find_consecutive(seq, gap='x', buried='o'):
+def find_consecutive(args, seq, h, gap='x', buried='o'):
 
     n = len(seq)
 
     groups = [list(g) for k, g in itertools.groupby(seq)]
     seq2 = []
     for i, g in enumerate(groups):
+        ## Append gap.
         if g[0] == gap:
             seq2 += g
+        ## Append non-buried.
         elif g[0] != buried:
             seq2 += g
+        ## Append buried as buried or non-buried.
         ## elif g[0] == buried
         else:
             ## first group
             if i == 0:
-                ## next group is gap
+                ## Next group is gap.
                 if groups[i+1][0] == gap:
                     seq2 += g
-                ## color first group same as next group
                 else:
-                    seq2 += len(g)*[groups[i+1][0]]
+                    ## Color first group same as next group.
+                    if groups[i+1][0] in ubiquitous:
+                        seq2 += len(g)*[groups[i+1][0]]
+                    ## Color first group as buried.
+                    else:
+                        seq2 += g
             ## last group
             elif i+1 == len(groups):
                 ## previous group is gap
@@ -801,27 +1159,51 @@ def find_consecutive(seq, gap='x', buried='o'):
                     seq2 += g
                 ## color last group same as previous group
                 else:
-                    seq2 += len(g)*[groups[i-1][0]]
+                    if groups[i-1][0] in ubiquitous:
+                        seq2 += len(g)*[groups[i-1][0]]
+                    else:
+                        seq2 += g
             ## if end of sequence then continue previous color
             elif len(seq2)+len(g) == n:
                 seq2 += len(g)*[groups[i-1][0]]
-            ## gap before and after
+                print(seq, seq2, g)
+                stop7
+            ## Gap before and after. Append buried.
             elif groups[i-1][0] == gap and groups[i+1][0] == gap:
                 seq2 += g
             ## gap before but not after
             elif groups[i-1][0] == gap and groups[i+1][0] != gap:
-                seq2 += len(g)*[groups[i+1][0]]
+                if groups[i+1][0] in ubiquitous:
+                    seq2 += len(g)*[groups[i+1][0]]
+                else:
+                    seq2 += g
             ## gap after but not before
             elif groups[i-1][0] != gap and groups[i+1][0] == gap:
-                seq2 += len(g)*[groups[i-1][0]]
-            ## same color before and after
+                if groups[i-1][0] in ubiquitous:
+                    seq2 += len(g)*[groups[i-1][0]]
+                else:
+                    seq2 += g
+            ## Same color before and after.
             elif groups[i-1][0] == groups[i+1][0]:
-                seq2 += len(g)*[groups[i-1][0]]
+                if groups[i-1][0] in ubiquitous:
+                    seq2 += len(g)*[groups[i-1][0]]
+                else:
+                    seq2 += g
+            ## Different color before and after.
             else:
+                len_prev = len(list(itertools.takewhile(
+                    lambda x: x == groups[i-1][0], reversed(seq2))))
+                ## Length 2 or longer to be appended.
                 if len(g) >= 2:
-                    len_prev = len(list(itertools.takewhile(
-                        lambda x: x == groups[i-1][0], reversed(seq2))))
-                    if len_prev+len(g)//2 in (1, 2, 3, 4, 6, 8):  # PAB lengths
+                    if all([
+                        groups[i-1][0] in ubiquitous,
+                        groups[i+1][0] not in ubiquitous]):
+                        seq2 += len(g)*[groups[i-1][0]]
+                    elif all([
+                        groups[i-1][0] not in ubiquitous,
+                        groups[i+1][0] in ubiquitous]):
+                        seq2 += len(g)*[groups[i+1][0]]
+                    elif len_prev+len(g)//2 in (1, 2, 3, 4, 6, 8):  # PAB lengths
                         ## append with color from both sides
                         seq2 += (len(g)//2)*[groups[i-1][0]]
                         seq2 += (len(g)-len(g)//2)*[groups[i+1][0]]
@@ -830,13 +1212,22 @@ def find_consecutive(seq, gap='x', buried='o'):
                         seq2 += (len(g)//2+1)*[groups[i-1][0]]
                         seq2 += (len(g)-len(g)//2-1)*[groups[i+1][0]]
                         continue
-                elif len(g) == 1:
+                else:  # elif len(g) == 1:
                     ## append to previous sequence of length 1
-                    len_prev = len(list(itertools.takewhile(
-                        lambda x: x == groups[i-1][0], reversed(seq2))))
-                    if len_prev == 1:
+                    try:
+                        NA = groups[i-1][0] in d_NA[h][1][len_prev+len(g)]
+                    except:
+                        NA = False
+                    if all([
+                        groups[i-1][0] in ubiquitous,
+                        groups[i+1][0] not in ubiquitous]):
+                        seq2 += len(g)*[groups[i-1][0]]
+                    elif all([
+                        groups[i-1][0] not in ubiquitous,
+                        groups[i+1][0] in ubiquitous]):
+                        seq2 += len(g)*[groups[i+1][0]]
+                    elif len_prev == 1 and not NA:
                         seq2 += 1*[groups[i-1][0]]
-                        continue
                     elif all([
                         ## before has length greater than 1
                         len_prev > 1,
@@ -845,13 +1236,15 @@ def find_consecutive(seq, gap='x', buried='o'):
                             lambda x: x == groups[i+1][0], seq[len(seq2)+1:]))) == 1,
                         ]):
                         seq2 += 1*[groups[i+1][0]]
-                        continue
                     elif len_prev+len(g) in (2, 3, 4, 6, 8):  # PAB lengths
                         seq2 += len(g)*[groups[i-1][0]]
-                        continue
                     else:
                         seq2 += len(g)*[groups[i+1][0]]
-                        continue
+                    pass
+                pass
+            pass
+        continue
+
     assert len(seq2) == n
 
     return seq2
@@ -966,7 +1359,7 @@ def largest_empty_rectangle(
     return d_rectangle
 
 
-def find_connected_buried_new(args, a_2D_buried, a_2D_density, a_2D_mIDs):
+def find_connected_buried(args, a_2D_buried, a_2D_density, a_2D_mIDs):
 
     print('''Finding connected 1x1 plates
 and replacing them with larger plates.''')
@@ -1041,16 +1434,15 @@ and replacing them with larger plates.''')
                             col = c3-col_major*size
                             if mod != 2:
                                 ## Insert large plate.
-                                a_3D_dIDs[
-                                    layer][row][col] = d_dIDs_sq_plate[size]
+                                designID = d_dIDs_sq_plate[size]
+                                a_3D_dIDs[layer][row][col] = designID
                             else:
                                 ## Insert brick(s).
-                                designID = d_plate2brick[size]
+                                designID = d_len2dIDs[3][2][size]
                                 dx = 2*(layer % 2)
                                 dz = 2*(1-layer % 2)
                                 for i in range(size//2):
-                                    a_3D_dIDs[layer-2][
-                                        row-i*dx][col-i*dz] = designID
+                                    a_3D_dIDs[layer-2][row-i*dx][col-i*dz] = designID
 ##                                for dx, dz, designID in d_brick_replace[size]:
 ##                                    a_3D_dIDs[
 ##                                        layer-2][row-dx][col-dz] = designID
@@ -1070,19 +1462,17 @@ and replacing them with larger plates.''')
     return a_3D_dIDs
 
 
-def find_buried(a_2D_density, layers):
-
-    n = np.shape(a_2D_density)[0]
+def find_buried(args, a_2D_density, layers, a_2D_mIDs):
 
     a_2D_buried = np.zeros(np.shape(a_2D_density), int)
 
-    for row in range(n):
+    for row in range(args.n):
         ## nothing buried at the edge (no bricks at the edge anyway)
-        if row == 0 or row == n-1:
+        if row == 0 or row == args.n-1:
             continue
-        for col in range(n):
+        for col in range(args.n):
             ## nothing buried at the edge (no bricks at the edge anyway)
-            if col == 0 or col == n-1:
+            if col == 0 or col == args.n-1:
                 continue
             ## no buried plates if only 1 plate
             if a_2D_density[row][col] <= 1:
@@ -1090,16 +1480,29 @@ def find_buried(a_2D_density, layers):
             ## minimum neighbouring height
             dens_min = z = min([
                 a_2D_density[row+x][col+y]
-                for x in range(-1, 2) for y in range(-1, 2)])
-            if dens_min >= 1:
-##                if row//48 == 2 and col//48 == 3:
-##                    if row == 143 and col == 184:
-##                        for x in range(-1, 2):
-##                            for y in range(-1, 2):
-##                                print(x,y,a_2D_density[row+x][col+y])
-##                        stop
-                ## update array
-                a_2D_buried[row][col] = dens_min-1
+                for x in range(-1, 1+1) for y in range(-1, 1+1)])
+            ## 1x1 plate not available
+            ## but 1x1 brick available.
+            ## 268 medium lilac (dark purple)
+            ## 221 bright purple (dark pink)
+            ## 322 medium azure
+            ## 151 sand green
+            if all([
+                ## 1x1 plate not available.
+                a_2D_mIDs[row][col] in d_NA[1][1][1],
+##                ## 1x1 brick available.
+##                a_2D_mIDs[row][col] not in d_NA[3][1][1],
+                ]):
+                n = a_2D_density[row][col]
+                m = dens_min
+                dens_min = min(
+                    dens_min + 1,
+                    n - 2,
+##                    n - 3 * ( (n - m + 1 + 1) // 3) + 1,
+                    n - 3 * ( (n - (m + 1) + 3) // 3) + 1,
+                    )
+            ## update array
+            a_2D_buried[row][col] = max(0, dens_min-1)
 
     return a_2D_buried
 
@@ -1171,7 +1574,13 @@ def normalize(a, args):
     return a
 
 
-def json2array(args):
+def json2array(args, a_2D_density):
+
+    ## 1) Calculate polygon intersection area for all 1x1 grid points.
+    ## 2) Calculate largest intersection area (ID) for each 1x1 grid point.
+    ## 3) Assign colors to 1x1 grid points of each ID.
+
+##    AREA = 0
 
     ## http://en.wikipedia.org/wiki/The_Languages_of_Africa
 
@@ -1179,6 +1588,246 @@ def json2array(args):
 
     ncols, nrows, xllcorner, yllcorner, cellsize = read_gpw_header(
         '{}.asc'.format(args.affix))
+
+    d_family2color = assign_color_families_to_language_families(args)
+
+    _den = cellsize * max(nrows, ncols)
+    factor = _den/args.n
+
+    a_2D_mIDs = np.zeros((args.n, args.n), int)
+    a_2D_areas = np.empty((args.n, args.n), dict)
+    d_eth2rowcol = {}
+
+    with open('etnicity_felix.json') as f:
+        js = json.load(f)
+
+    d_tmp = {}
+    ## 1) Calculate polygon intersection areas.
+    for i, feature in enumerate(js['features']):
+
+        polygon = shapely.geometry.shape(feature['geometry'])
+        FAMILY = feature['properties']['FAMILY']
+        ETHNICITY = feature['properties']['ETHNICITY']
+        ID = feature['properties']['ID']
+        if args.verbose:
+            print(i, ID, FAMILY, ETHNICITY)
+        if ID == 0 and FAMILY == '' and ETHNICITY == '':
+            continue
+        ## Do not color/build Madagascar.
+        if FAMILY == 'Malagasy':
+            continue
+
+        min_lon, min_lat, max_lon, max_lat = polygon.bounds
+        ## row is miscalculated...
+        ## row = args.n-row
+        row_min = args.n*(min_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
+        row_max = args.n*(max_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
+        col_min = args.n*(min_lon-xllcorner)/_den-0.5
+        col_max = args.n*(max_lon-xllcorner)/_den-0.5
+
+        ## First correct FAMILY of features to allow correct grouping.
+        FAMILY, ETHNICITY = fix_family_ethnicity(
+            FAMILY, ETHNICITY, ID, max_lat, min_lon)
+        ## Do not color multiple separate polygons with the same color,
+        ## if their ethnicity is not identical.
+        if ETHNICITY == '':
+            ETHNICITY = ID
+
+        ## Do floor and ceiling to avoid non-overlapping polygons.
+        ## loop from South to North
+        assert math.floor(row_min) < math.ceil(row_max)
+        for row in range(math.floor(row_min-1), math.ceil(row_max+1)):
+            latitude = factor*(row+0.5)+yllcorner
+            latitude -= cellsize*(ncols-nrows)/2
+            ## loop from West to East
+            assert math.floor(col_min-1) < math.ceil(col_max)
+            for col in range(math.floor(col_min), math.ceil(col_max+1)):
+                longitude = factor*(col+0.5)+xllcorner
+
+                area = calculate_intersection_area(
+                    a_2D_areas, longitude, latitude, factor, polygon)
+
+                if area == 0:
+                    continue
+
+                if not a_2D_areas[row][col]:
+                    a_2D_areas[row][col] = {}
+                a_2D_areas[row][col][(FAMILY, ETHNICITY)] = area
+
+    ## 2) Calculate largest intersection areas.
+    for row in range(args.n):
+        for col in range(args.n):
+            ## No polygons intersect.
+            if not a_2D_areas[row][col]:
+                continue
+            ## Avoid grey colors (Misc/Other) if possible.
+            for materialID_grey in (194, 199):
+                if all([
+                    len(a_2D_areas[row][col].keys()) > 1,
+                    materialID_grey in a_2D_areas[row][col].keys(),
+                    ]):
+                    del a_2D_areas[row][col][materialID_grey]
+            ## Color by polygon intersection with max area.
+            FAMILY, ETHNICITY = max(
+                a_2D_areas[row][col], key=a_2D_areas[row][col].get)
+            try:
+                d_eth2rowcol[(FAMILY, ETHNICITY)].append((row, col))
+            except KeyError:
+                d_eth2rowcol[(FAMILY, ETHNICITY)] = [(row, col)]
+
+    ## 3) Assign colors.
+    for FAMILY, ETHNICITY in sorted(
+        d_eth2rowcol, key=lambda k: len(d_eth2rowcol[k]), reverse=True):
+        ## Checking heights and extreme points to see if special colors,
+        ## for which 1x1 plates are not available, can be used.
+        ## Heights within polygon.
+        heights = set()
+        heights_vicinal = set()
+        ##
+        extremes = [args.n, 0, args.n, 0]
+        color_family = d_color2family[d_family2color[FAMILY]]
+##        colors = d_colorfamily2color[color_family]
+##        c = collections.Counter(colors)
+        c = collections.Counter()
+        for row, col in d_eth2rowcol[(FAMILY, ETHNICITY)]:
+
+            ## Heights.
+            h = a_2D_density[args.n-row][col]
+            heights.add(h)
+
+##            if h == 0:
+##                print('zero height', FAMILY, ETHNICITY, args.n-row, col)
+
+            ## Extremes.
+            if args.n-row < extremes[0]:
+                extremes[0] = args.n-row
+            if args.n-row > extremes[1]:
+                extremes[1] = args.n-row
+            if col < extremes[2]:
+                extremes[2] = col
+            if col > extremes[3]:
+                extremes[3] = col
+
+            ## Count nearby colours.
+            dist = 1
+            for i in range(-dist, dist+1):
+                for j in range(-dist, dist):
+                    ## Do not consider diagonally vicinal grid points.
+                    heights_vicinal.add(a_2D_density[args.n-row+i][col+j])
+                    if i != 0 and j != 0:
+                        continue
+                    mID = a_2D_mIDs[args.n-row+i][col+j]
+                    c[mID] += 1
+
+        ## a) 1x1 plate not available, but 1x2 plate and 1x2 brick available.
+        if all([
+            any([
+                color_family == 'blue' and c[321] == 0,  # dark azure
+##                color_family == 'purple' and c[268] == 0,  # medium lilac (dark purple)
+##                color_family == 'purple' and c[221] == 0,  # bright purple (dark pink)
+                ]),
+            ## 1x2 plates available.
+            ## 2x2 area can be filled in both directions,
+            ## but 1x2 area can only be filled in one direction.
+            all([
+                ## Rectangular area.
+                (
+                    (extremes[1]-extremes[0]+1)*
+                    (extremes[3]-extremes[2]+1)
+                    ) == len(d_eth2rowcol[(FAMILY, ETHNICITY)]),
+                ## Length 2 in both directions.
+                (extremes[1]-extremes[0]+1) % 2 == 0,
+                (extremes[3]-extremes[2]+1) % 2 == 0,
+                ## All at same height.
+                len(heights) == 1,
+                ]),
+            ]):
+            if color_family == 'blue' and c[321] == 0:
+                color = 321  # dark azure
+        ## b) 1x1 plate not available, but 1x1 brick available.
+        elif all([
+            any([
+                color_family == 'blue' and c[322] == 0,  # medium azure
+                color_family == 'blue' and c[323] == 0,  # aqua (unikitty blue)
+                color_family == 'purple' and c[268] == 0,  # medium lilac (dark purple)
+                color_family == 'purple' and c[221] == 0,  # bright purple (dark pink)
+                color_family == 'green' and c[151] == 0,  # sand green
+                ]),
+            ## At least 1 brick height.
+            all([h >= 3 for h in heights]),
+            any([
+                ## Not at the edge, so pieces below can be plates.
+                ## And vicinal must be able to cover all of a brick.
+                all([min(heights_vicinal) > (h % 3) for h in heights]),
+                ## Whole stack can be replaced with bricks.
+                all([h % 3 == 0 for h in heights]),
+                ]),
+            any([
+                ## 1x1 area.
+                all([
+                    extremes[1]-extremes[0]+1 == 1,
+                    extremes[3]-extremes[2]+1 == 1,
+                    ]),
+                ## Necessary to avoid identical colors next to each other.
+                len(set(d_colorfamily2color[color_family])-set(c)) == 0,
+                ]),
+            ]):
+            if color_family == 'blue' and c[322] == 0:  # medium azure
+                color = 322
+            elif color_family == 'blue' and c[323] == 0:
+                color = 323
+            elif color_family == 'purple' and c[268] == 0:  # medium lilac (dark purple)
+                color = 268
+            elif color_family == 'purple' and c[221] == 0:  # bright purple (dark pink)
+                color = 221
+            elif color_family == 'green' and c[151] == 0:  # sand green
+                color = 151
+        ## c) 1x1 plate available.
+        else:
+            ## Color as least common and preferably use cheap colors.
+            for color in d_colorfamily2color[color_family]:
+                if c[color] == 0:
+                    break
+            else:
+                color = c.most_common()[-1][0]
+                print(
+                    'copycolor', color, color_family,
+                    FAMILY, ETHNICITY, len(d_eth2rowcol[(FAMILY, ETHNICITY)]), c)
+
+        if color in (194, 199):
+            print(
+                'grey', color, ID, FAMILY, ETHNICITY,
+                len(d_eth2rowcol[(FAMILY, ETHNICITY)]),
+                min_lat, min_lon, max_lat, max_lon)
+
+        for row, col in d_eth2rowcol[(FAMILY, ETHNICITY)]:
+            a_2D_mIDs[args.n-row][col] = color
+
+        ## Continue loop over family, ethnicity tuples.
+        continue
+
+    return a_2D_mIDs
+
+
+def calculate_intersection_area(
+    a_2D_areas, longitude, latitude, factor, polygon):
+
+    polygon_1x1 = shapely.geometry.Polygon([
+        (longitude-.5*factor, latitude-.5*factor),
+        (longitude+.5*factor, latitude-.5*factor),
+        (longitude+.5*factor, latitude+.5*factor),
+        (longitude-.5*factor, latitude+.5*factor),
+        (longitude-.5*factor, latitude-.5*factor),
+        ])
+    ## Calculate the area
+    ## instead of solving the point-in-polygon problem.
+    area = polygon.intersection(
+        polygon_1x1).area/(factor*factor)
+
+    return area
+
+
+def assign_color_families_to_language_families(args):
 
     d_family2color = {}
     with open(args.colors) as f:
@@ -1197,216 +1846,140 @@ def json2array(args):
     assert 26 not in d_family2color.values()
     assert 194 not in d_family2color.values()
     assert 199 not in d_family2color.values()
-    d_family2color['Afrikaans'] = 26
-    d_family2color['Other'] = 194
-    d_family2color['Miscellaneous / Unclassified'] = 199
+    d_family2color['Afrikaans'] = 26  # black
+    d_family2color['Other'] = 194  # medium stone grey
+    d_family2color['Miscellaneous / Unclassified'] = 199  # dark stone grey
 
-    print(d_family2color)
+    return d_family2color
 
-    d_ethnicity2color = {}
 
-    a_2D_mIDs = np.zeros((args.n, args.n), int)
+def fix_family_ethnicity(family, ethnicity, ID, max_lat, min_lon):
 
-    with open('etnicity_felix.json') as f:
-        js = json.load(f)
-
-    for feature in js['features']:
-
-        polygon = shapely.geometry.shape(feature['geometry'])
-        family = feature['properties']['FAMILY']
-        ethnicity = feature['properties']['ETHNICITY']
-        ID = feature['properties']['ID']
-        if ID == 0 and family == '' and ethnicity == '':
-            continue
-
-        min_lon, min_lat, max_lon, max_lat = polygon.bounds
-        _den = cellsize * max(nrows, ncols)
-        row_min = args.n*(min_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
-        row_max = args.n*(max_lat-yllcorner+cellsize*(ncols-nrows)/2)/_den-0.5
-        col_min = args.n*(min_lon-xllcorner)/_den-0.5
-        col_max = args.n*(max_lon-xllcorner)/_den-0.5
-
-        ## Bantu languages in Angola incorrectly assigned to the Kru family.
-        if family == 'Kru' and max_lat < 0:
+    ## Bantu languages in Angola incorrectly assigned to the Kru family.
+    if family == 'Kru' and max_lat < 0:
+        family = 'Bantu'
+    ## Koman languages incorrectly assigned to the Maban family.
+    ## Both Nilo-Saharan though.
+    elif family == 'Maban' and min_lon > 30:
+        family = 'Nilotic'
+        ## http://en.wikipedia.org/wiki/Koman_languages
+        ## http://en.wikipedia.org/wiki/Berta_languages
+        ## http://en.wikipedia.org/wiki/Eastern_Jebel_languages
+        assert ethnicity in (
+            ## Koman
+            'OPUUO',  # Ethiopia
+            'GULE',  # Sudan
+            'KOMA',  # Sudan
+            ## Chari-Nile > Berta
+            'BERTA',
+            ## Chari-Nile > Eastern Sudanic
+            'GAAM',
+            'MUN',
+            'MASONGO',
+            'BAREA',
+            ## Chari-Nile
+            'KUNAMA',
+            )
+    ## http://en.wikipedia.org/wiki/Sandawe_language
+    ## http://en.wikipedia.org/wiki/Languages_of_Namibia
+    ## http://en.wikipedia.org/wiki/San_languages
+    ## http://en.wikipedia.org/wiki/Khoekhoe_language#Dialects
+    elif family == 'Sandawe' and max_lat < -10:
+        assert ID in (148, 149, 186)
+        ## http://en.wikipedia.org/wiki/%C7%82Aakhoe_dialect
+        if ID == 186:
+            family = 'Khoi: Nama, Bergdama'
+            ethnicity = 'Haiǁom'
+        ## http://en.wikipedia.org/wiki/Damara_people
+        elif ID == 148:
+            family = 'San'  # color red
+            ethnicity = 'Nama-Damara'
+        ## http://en.wikipedia.org/wiki/Nama_people
+        else:
+            assert ID == 149
+            family = 'San'  # color red
+            ethnicity = 'Nama-Damara'
+    ## http://en.wikipedia.org/wiki/Kwadi_language
+    elif ethnicity == 'BERGDAMA' and ID == 147:
+        assert family == 'Khoi: Nama, Bergdama'
+        ethnicity = 'Kwadi'
+    ## https://en.wikipedia.org/wiki/Bajuni_dialect
+    elif family == 'Other' and ethnicity == 'TIKUU':
+        family = 'Bantu'
+    ## http://en.wikipedia.org/wiki/Awngi_language
+    elif family == 'Fufulde' and ethnicity == 'AWIYA':
+        family = 'Cushitic'
+    ## http://en.wikipedia.org/wiki/Dongo_language_(Nilo-Saharan)
+    elif family == 'Fufulde' and ethnicity == 'DONGO':
+        family = 'Nilo-Saharan'
+    ## http://en.wikipedia.org/wiki/Ariaal_people
+    elif family == 'Nilotic / Bantoid' and ethnicity == 'ARIAAL':
+        family = 'Nilotic'
+    ## http://en.wikipedia.org/wiki/Chadian_Arabic
+    elif family == 'Saharan / Cushitic' and ethnicity == 'SHUWA':
+        family = 'Semitic'
+    ## https://www.ethnologue.com/language/pnz
+    ## http://en.wikipedia.org/wiki/Pana_language
+    elif family == 'Fufulde / Adamawa-Ubangia' and ethnicity == 'PANI':
+        family = 'Niger-Congo'
+    ## http://en.wikipedia.org/wiki/Yedina_language
+    elif family == 'Chadic / Cushitic' and ethnicity == 'BUDUMA':
+        family = 'Chadic'
+    ## http://en.wikipedia.org/wiki/Fongoro_language
+    elif family == 'Saharan / Nilotic' and ethnicity == 'FONGORO':
+        family = 'Nilo-Saharan'
+    ## http://en.wikipedia.org/wiki/Aja_language_(Nilo-Saharan)
+    elif family == 'Adamawa-Ubangian / Chari-Nile' and ethnicity == 'AJA':
+        family = 'Chari-Nile'
+    ## http://en.wikipedia.org/wiki/Shatt_language
+    elif family == 'Chari-Nile / Nilotic' and ethnicity == 'SHATT':
+        family = 'Nilo-Saharan'
+    ## Afrikaans
+    elif family == 'Miscellaneous / Unclassified':
+        if ethnicity == 'YEKE':
             family = 'Bantu'
-        ## Koman languages incorrectly assigned to the Maban family.
-        ## Both Nilo-Saharan though.
-        elif family == 'Maban' and min_lon > 30:
-            family = 'Nilotic'
-            ## http://en.wikipedia.org/wiki/Koman_languages
-            ## http://en.wikipedia.org/wiki/Berta_languages
-            ## http://en.wikipedia.org/wiki/Eastern_Jebel_languages
-            assert ethnicity in (
-                ## Koman
-                'OPUUO',  # Ethiopia
-                'GULE',  # Sudan
-                'KOMA',  # Sudan
-                ## Chari-Nile > Berta
-                'BERTA',
-                ## Chari-Nile > Eastern Sudanic
-                'GAAM',
-                'MUN',
-                'MASONGO',
-                'BAREA',
-                ## Chari-Nile
-                'KUNAMA',
-                )
-        ## http://en.wikipedia.org/wiki/Ariaal_people
-        elif family == 'Nilotic / Bantoid' and ethnicity == 'ARIAAL':
-            family = 'Nilotic'
-        ## http://en.wikipedia.org/wiki/Chadian_Arabic
-        elif family == 'Saharan / Cushitic' and ethnicity == 'SHUWA':
-            family = 'Semitic'
-        ## https://www.ethnologue.com/language/pnz
-        ## http://en.wikipedia.org/wiki/Pana_language
-        elif family == 'Fufulde / Adamawa-Ubangia' and ethnicity == 'PANI':
+        elif ethnicity in (
+            ## http://en.wikipedia.org/wiki/Kambari_languages
+            'KAMBARI',
+            ## http://en.wikipedia.org/wiki/Kudu-Camo_language
+            'KUDU',
+            ):
             family = 'Niger-Congo'
-        ## http://en.wikipedia.org/wiki/Yedina_language
-        elif family == 'Chadic / Cushitic' and ethnicity == 'BUDUMA':
-            family = 'Chadic'
-        ## http://en.wikipedia.org/wiki/Fongoro_language
-        elif family == 'Saharan / Nilotic' and ethnicity == 'FONGORO':
-            family = 'Nilo-Saharan'
-        ## http://en.wikipedia.org/wiki/Aja_language_(Nilo-Saharan)
-        elif family == 'Adamawa-Ubangian / Chari-Nile' and ethnicity == 'AJA':
-            family = 'Chari-Nile'
-        ## http://en.wikipedia.org/wiki/Shatt_language
-        elif family == 'Chari-Nile / Nilotic' and ethnicity == 'SHATT':
-            family = 'Nilo-Saharan'
-        ## Do not color/build Madagascar.
-        elif family == 'Malagasy':
-            continue
-        ## Afrikaans
-        elif family == 'Miscellaneous / Unclassified':
-            if ethnicity == 'YEKE':
-                family = 'Bantu'
-            elif ethnicity in (
-                ## http://en.wikipedia.org/wiki/Kambari_languages
-                'KAMBARI',
-                ## http://en.wikipedia.org/wiki/Kudu-Camo_language
-                'KUDU',
-                ):
-                family = 'Niger-Congo'
-            elif max_lat < -20:
-                family = 'Afrikaans'
-                assert ID in (
-                    153,  # Johannesburg
-                    138,  # Bloemfontein
-                    141,  # Durban
-                    143,  # East London
-                    146,  # Cape Town
-                    )
-            elif ethnicity == '' and ID in (
-                425,  # Liberia coast
-                432,  # Sierra Leone coast
-                804,  # Abuja, Nigeria
-                1261, 1463,  # Nigeria/Cameroon border
-                1496, 1502, 1509, 1616, 1736, 1738, 1769,  # Nigeria
-                ):
-                pass
-            else:
-                assert ethnicity == 'DARI'  # Cameroon
-        elif family == 'Other':
-            ## http://en.wikipedia.org/wiki/Daisu_language
-            if ethnicity == 'DAISU':
-                family = 'Bantu'
-        elif '/' in family and ethnicity != '':
-            try:
-                colors = [d_family2color[s.strip()] for s in family.split('/')]
-            except:
-                colors = []
-            if len(colors) == 1:
-                print(family, ethnicity, colors)
-                stop
-        else:
+        elif max_lat < -20:
+            family = 'Afrikaans'
+            assert ID in (
+                153,  # Johannesburg
+                138,  # Bloemfontein
+                141,  # Durban
+                143,  # East London
+                146,  # Cape Town
+                )
+        elif ethnicity == '' and ID in (
+            425,  # Liberia coast
+            432,  # Sierra Leone coast
+            804,  # Abuja, Nigeria
+            1261, 1463,  # Nigeria/Cameroon border
+            1496, 1502, 1509, 1616, 1736, 1738, 1769,  # Nigeria
+            ):
             pass
-
-        ## Get color of family.
+        else:
+            assert ethnicity == 'DARI'  # Cameroon
+    elif family == 'Other':
+        ## http://en.wikipedia.org/wiki/Daisu_language
+        if ethnicity == 'DAISU':
+            family = 'Bantu'
+    elif '/' in family and ethnicity != '':
         try:
-            color = d_family2color[family]
-        except KeyError:
-            print(ID, family, ethnicity, min_lat, min_lon, max_lat, max_lon)
+            colors = [d_family2color[s.strip()] for s in family.split('/')]
+        except:
+            colors = []
+        if len(colors) == 1:
+            print(family, ethnicity, colors)
             stop
+    else:
+        pass
 
-        ## List of tuples of rows and cols to color.
-        l_within = []
-
-        ## Initiate count of vicinal colors.
-        color_family = d_color2family[color]
-        colors = d_colorfamily2color[color_family]
-        c = collections.Counter(colors)
-            
-        ## loop from South to North
-        for row in range(math.floor(row_min), math.ceil(row_max)+1):
-            latitude = cellsize*(row+0.5)*max(nrows, ncols)/args.n+yllcorner
-            latitude -= cellsize*(ncols-nrows)/2
-            ## loop from West to East
-            for col in range(math.floor(col_min), math.ceil(col_max)+1):
-                longitude = cellsize*(col+0.5)*max(nrows, ncols)/args.n+xllcorner
-
-                ## Don't change from non-miscellaneous to miscellanous.
-                if all([
-                    any([
-                        family in ('Miscellaneous / Unclassified', 'Other'),
-                        '/' in family]),
-                    a_2D_mIDs[args.n-row][col] != 0]):
-                    continue
-
-                point = shapely.geometry.Point(longitude, latitude)
-                ## solve the point-in-polygen problem
-                if polygon.contains(point):
-                    pass
-                ## polygon might not contain point rounded to nearest grid value
-                ## hence add manually
-                elif row_max-row_min < 2.5 or col_max-col_min < 2.5:
-                    ## Don't change pre-assigned color if not within polygon.
-                    pass
-                else:
-                    continue
-
-                dist = 2
-                for i in range(-dist, dist+1):
-                    for j in range(-dist, dist):
-                        mID = a_2D_mIDs[args.n-row+i][col+j]
-                        if mID not in c:
-                            continue
-                        c[mID] += 1
-
-                l_within.append((args.n-row, col))
-
-                ## continue loop over cols
-                continue
-            ## continue loop over rows
-            continue
-
-        if l_within:
-            try:
-                color = d_ethnicity2color[family+':'+ethnicity]
-            except KeyError:
-                least_common = c.most_common()[-1]
-                ## Color as least common and preferably use cheap colors.
-                for color in d_colorfamily2color[color_family]:
-                    if c[color] == 1:
-                        break
-                else:
-                    color = least_common[0]
-                d_ethnicity2color[family+':'+ethnicity] = color
-            for row, col in l_within:
-                a_2D_mIDs[row][col] = color
-
-            if color in (194, 199):
-                print(len(l_within), color, ID, family, ethnicity, min_lat, min_lon, max_lat, max_lon)
-
-        ## Color possibly already assigned to all points in polygon.
-        else:
-            if args.verbose:
-                print('small', family, ethnicity)
-            pass
-
-        ## continue loop over features
-        continue
-
-    return a_2D_mIDs
+    return family, ethnicity
 
 
 def numpy2lxfml(
@@ -1419,7 +1992,6 @@ def numpy2lxfml(
         '{}.asc'.format(args.affix))
 
     plate_size = args.plate_size
-    n = args.n
 
     ## initiate refID count
     refID = 0
@@ -1429,9 +2001,9 @@ def numpy2lxfml(
 ##        f.write('<<BuildingInstructions>\n')
 ##        f.write('<BuildingInstruction>\n')
         ## loop from North to South
-        for row1 in range(int(n/plate_size)):
+        for row1 in range(int(args.n/plate_size)):
             ## loop from West to East
-            for col1 in range(int(n/plate_size)):
+            for col1 in range(int(args.n/plate_size)):
                 if args.verbose:
                     print('numpy2lxfml, row', row1, col1)
                 with open(
@@ -1680,22 +2252,4 @@ def read_gpw(file_gpw):
 
 
 if __name__ == '__main__':
-##N/row+       E/col+/
-##\            /
-## \          /
-##  \        /
-##   \      /
-##    \    /
-##     \  /
-##      \/
-####    seq = 44*['x']+3*['o']+['b']
-####    seq = find_consecutive(seq)
-####    print(seq)
-####    seq = ['b']+3*['o']+44*['x']
-####    seq = find_consecutive(seq)
-####    print(seq)
-##    seq = [23, 1, 1, 1, 'x', 'x', 'x', 'x', 1, 1, 23, 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x']
-##    seq = find_consecutive(seq, gap='x', buried=1)
-##    print(seq)
-##    stop
     main()
