@@ -2,13 +2,15 @@
 
 # Tommy Carstensen, 2011, 2015jun, 2015jul
 
-# todo: finish replacements of neigbouring pieces
+
+# todo 2015nov25: rewrite function coords_to_lxfml
 
 import os
 import math
 import argparse
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
+import urllib.request
 
 
 def main():
@@ -16,19 +18,23 @@ def main():
     args = argparser()
 
     # parse PDB coordinates
+    # keys ATOM, HETATM; CHAIN; RESNO; ATOMNAME; element_color, coord, element_size
     d_coords_PDB = parse_pdb(args)
 
     # convert Angstrom coordinates to brick coordinates
+    ## d_layers[layer][str(color)]['x'][x] = [y1, y2, yn]
+    ## d_buried[layer][x][y] = {'all': i, 'excl_diagonals': i}
     d_layers, l_minmax_bricks, d_buried = coordAngstrom2coordBrick(
         args, d_coords_PDB)
     del d_coords_PDB  # save some memory
-
-    plot_layers(args, d_layers, d_buried, l_minmax_bricks)
 
     # convert brick coordinates to bricks
     coordBrick2coordLDD(
         args, d_layers, l_minmax_bricks, d_buried,
         )
+
+    plot_layers(args, d_layers, d_buried, l_minmax_bricks)
+
     del d_layers, l_minmax_bricks  # save some memory
 
     return
@@ -74,7 +80,8 @@ def plot_layers(args, d_layers, d_buried, l_minmax_bricks):
 ##    plt.axis('equal')
 ##    plt.tick_params(which='major', length=1)
 ##    ax.axis('scaled')
-    
+
+    ## matplotlib colors
     d_colors = {
         'O': 'r',
         'N': 'b',
@@ -82,21 +89,50 @@ def plot_layers(args, d_layers, d_buried, l_minmax_bricks):
         'S': 'y',
         'H': 'w',
         'P': 'orange',
+        'SE': 'pink',
+        'CL': 'lime',
+        'FE': 'darkred',
+        '154': 'c',
+        '141': 'm',
+        '26': 'k',
+        '28': 'g',
+        '194': 'grey',
+        '119': 'lime',
         }
-    d_markers = {'O': 'o', 'N': 's', 'C': 'v', 'S': 'o', 'H': 'D', 'P': 'x'}
+    ## matplotlib markers.
+    d_markers = {
+        'O': 'o', 'N': 's', 'C': 'v', 'S': 'o', 'H': 'D', 'P': 'x',
+        'SE': 'x', 'CL': 'x', 'FE': 'x',
+        '154': 'x',
+        '141': 'x',
+        '26': 'v',
+        '28': 'x',
+        '194': 'x',
+        }
+    dpi = 600
+    if dpi == 300:
+        size_default = 10
+    else:
+        size_default = 4
     for i, layer in enumerate(sorted(d_layers.keys())):
-        print('plt', i)
+        print('plt', i, len(d_layers.keys()))
         fig, ax = plt.subplots()
         for element in d_layers[layer].keys():
             for x in d_layers[layer][element]['x'].keys():
                 for z in d_layers[layer][element]['x'][x]:
-                    size = 10
+                    size = size_default
                     if d_buried[layer][x][z]['excl_diagonals'] == 7:
-                        c = 'g'
+                        c = 'cyan'
                         marker = 'x'
                     else:
-                        c = d_colors[element]
-                        marker = d_markers[element]
+                        try:
+                            c = d_colors[element]
+                        except KeyError:
+                            c = 'm'
+                        try:
+                            marker = d_markers[element]
+                        except KeyError:
+                            marker = 'x'
                         if i > 0:
                             for element2 in d_layers[layer-1].keys():
                                 try:
@@ -109,7 +145,7 @@ def plot_layers(args, d_layers, d_buried, l_minmax_bricks):
                                     break
                             else:
                                 bool_supported = False
-                                size = 25
+                                size = 2.5*size_default
 ##                            if bool_supported:
 ##                                ax.scatter(x, z, s=32, c='g', alpha=0.9, marker='^')
                     ax.scatter(x, z, s=size, c=c, alpha=0.9, marker=marker)
@@ -127,9 +163,9 @@ def plot_layers(args, d_layers, d_buried, l_minmax_bricks):
         ax.set_aspect(1)
         ax.xaxis.set_minor_locator(MultipleLocator(2))
         ax.yaxis.set_minor_locator(MultipleLocator(2))
-        ax.grid(b=True, color='k', axis='both', which='major', linestyle='--')
-        ax.grid(b=True, color='k', axis='both', which='minor', linestyle=':')
-        plt.savefig('png/{}_{:d}_{:d}'.format(args.pdb, args.sizeratio, i))
+        ax.grid(visible=True, color='k', axis='both', which='major', linestyle='--')
+        ax.grid(visible=True, color='k', axis='both', which='minor', linestyle=':')
+        plt.savefig('png/{}_{:d}_{:d}'.format(args.pdb, args.sizeratio, i), dpi=600)
         plt.clf()
         plt.close()
 
@@ -195,10 +231,14 @@ d_coords_PDB[record][chain][res_no][atom_name] = {
 
     pdb = args.pdb
 
-    print(('reading and parsing {}.pdb'.format(pdb)))
-    fd = open('pdb/{}.pdb'.format(pdb), 'r')
-    lines = fd.readlines()
-    fd.close()
+    path = 'pdb/{}.pdb'.format(pdb)
+    print(('reading and parsing {}'.format(path)))
+    if not os.path.isfile(path):
+        url = 'http://www.rcsb.org/pdb/files/{}.pdb'.format(pdb.upper())
+        print(url)
+        urllib.request.urlretrieve(url, path)
+    with open(path, 'r') as f:
+        lines = f.readlines()
 
     d_coords_PDB = {'ATOM': {}, 'HETATM': {}}
 
@@ -206,14 +246,40 @@ d_coords_PDB[record][chain][res_no][atom_name] = {
         [1000., -1000.], [1000., -1000.], [1000., -1000.],
         ]
 
+    d_helix = {}
+    d_sheet = {}
+
     for line in lines:
         record = line[:6].strip()
-        if record == 'ENDMDL':
-            break
+        if record == 'HELIX':
+            chain = line[19]
+            res_no1 = int(line[21:25])
+            res_no2 = int(line[33:37])
+            try:
+                d_helix[chain] += list(range(res_no1, res_no2+1))
+            except KeyError:
+                d_helix[chain] = list(range(res_no1, res_no2+1))
+            continue
+        if record == 'SHEET':
+            initChainID = line[21]
+            initSeqNum = int(line[22:26])
+            endSeqNum = int(line[33:37])
+            try:
+                d_sheet[chain].extend(list(range(initSeqNum, endSeqNum+1)))
+            except KeyError:
+                d_sheet[chain] = list(range(initSeqNum, endSeqNum+1))
+            continue
+        ## Only parse the first model of an NMR structure.
+        ## Also skips transformed assymetric units of biological units.
+##        if record == 'ENDMDL':
+##            break
         if record not in ['ATOM', 'HETATM']:
             continue
         res_name = line[17:20]
         chain = line[21]
+        if len(args.chains) > 0 and chain not in args.chains:
+            continue
+        ## Skip water.
         if res_name == 'HOH':
             continue
         element_size = element_color = line[76:78].strip()
@@ -236,8 +302,6 @@ d_coords_PDB[record][chain][res_no][atom_name] = {
         #
         # color by residue instead of by atom
         #
-        if res_name == 'HEM':
-            element_color = 'CL'
         if args.bool_color_by_residue is True:
             d_elements = {
                 ' DC': 'CL',  # green
@@ -247,10 +311,86 @@ d_coords_PDB[record][chain][res_no][atom_name] = {
                 }
             element_color = d_elements[res_name]
 
+        if args.backbone_color:
+            if atom_name in [
+                ## Protein
+                'N', 'CA', 'C', 'O',
+                ## DNA
+                'P', 'OP1', 'OP2',
+                ]:
+                element_color = args.backbone_color
+            else:
+                if args.backbone_only:
+                    if any([
+                        all([record == 'ATOM' and res_name in [
+                            'ALA', 'CYS', 'ASP', 'GLU', 'PHE', 'GLY', 'HIS',
+                            'ILE', 'LYS', 'LEU', 'MET', 'ASN', 'PRO', 'GLN',
+                            'ARG', 'SER', 'THR', 'VAL', 'TRP', 'TYR',
+                            'A', 'C', 'G', 'T',
+                            'DA', 'DC', 'DG', 'DT',
+                            ]]),
+                        all([record == 'HETATM' and res_name in ['MSE',]]),
+                        ]):
+                        if not args.sidechains:
+                            continue
+                        if all([
+                            str(res_no) not in args.sidechains,
+                            str(res_no)+chain not in args.sidechains,
+                            ]):
+                            continue
+                        else:
+                            element_color = 'H'
+                elif atom_name == 'H':
+                    element_color = atom_name
+                else:
+                    element_color = 'C'
+
+        if args.res_names:
+            if res_name in args.res_names:
+                if atom_name not in ('FE'):
+                    assert len(args.res_name_colors) == len(args.res_names)
+                    element_color = args.res_name_colors[
+                        args.res_names.index(res_name)]
+
+##        ## color atoms after residues
+##        if atom_name in args.atom_names:
+##            assert len(args.atom_name_colors) == len(args.atom_names)
+##            element_color = args.atom_name_colors[
+##                args.atom_names.index(atom_name)]
+
+        ## Color secondary structure elements.
+        if args.color_helix:
+            if chain in d_helix.keys():
+                if res_no in d_helix[chain]:
+                    if args.sidechains:
+                        if all([
+                            str(res_no) not in args.sidechains,
+                            str(res_no)+chain not in args.sidechains,
+                            ]):
+                            element_color = args.color_helix
+                    else:
+                        element_color = args.color_helix
+        if args.color_sheet:
+            if chain in d_sheet.keys():
+                if res_no in d_sheet[chain]:
+                    if args.sidechains:
+                        if all([
+                            str(res_no) not in args.sidechains,
+                            str(res_no)+chain not in args.sidechains,
+                            ]):
+                            element_color = args.color_sheet
+                    else:
+                        element_color = args.color_sheet
+
+        if args.bool_color_by_chain is True:
+            element_color = args.colors[args.chains.index(chain)]
+
         d_coords_PDB[record][chain][res_no][atom_name] = {
             'coord': coord, 'element_size': element_size,
             'element_color': element_color,
             }
+        if res_name == 'HEM':
+            print(res_name, atom_name, element_color)
 
         for i in range(3):
             if coord[i] < l_minmax_PDB[i][0]:
@@ -333,12 +473,18 @@ def coordAngstrom2coordBrick(args, d_coords_PDB):
     #
     # set i/o file path
     #
-    fn = 'txt/d_layers_{}_{}_{}'.format(
+    fn = 'txt/{}_{}_{}_layers'.format(
         pdb, args.sizeratio, args.brick_or_plate,)
     if args.bool_hollow is True:
         fn += '_hollow'
     if args.bool_color_by_residue is True:
         fn += '_colorbyresidue'
+    if args.bool_color_by_chain is True:
+        fn += '_colorbychain'
+    if args.backbone_only is True:
+        fn += '_backboneonly'
+    if args.backbone_color:
+        fn += '_backbonecolor{}'.format(args.backbone_color)
     if args.bool_grained is True:
         fn += '_flying1x1removal'
     fn += '.txt'
@@ -346,10 +492,14 @@ def coordAngstrom2coordBrick(args, d_coords_PDB):
     #
     # set i/o file path
     #
-    fn_buried = 'txt/d_buried_{}_{}_{}'.format(
+    fn_buried = 'txt/{}_{}_{}_buried'.format(
         args.pdb, args.sizeratio, args.brick_or_plate,)
     if args.bool_grained is True:
         fn_buried += '_flying1x1removal'
+    if args.backbone_only is True:
+        fn += '_backboneonly'
+    if args.bool_hollow is True:
+        fn += '_hollow'
     fn_buried += '.txt'
 
     if os.path.isfile(fn) and os.path.isfile(fn_buried):
@@ -589,8 +739,6 @@ def find_vicinal(args, d_coords_PDB,):
                 if args.verbose:
                     print(('chain', chain, 'residue', res_no))
                 for atom_name in d_coords_PDB[record][chain][res_no].keys():
-                    if record == 'HETATM':
-                        print(('exclude', record, chain, res_no))
                     element_size = (
                         d_coords_PDB[record][chain][res_no][atom_name][
                             'element_size'
@@ -815,7 +963,8 @@ def coordBrick2coordLDD(
         args, d_layers, l_minmax_bricks, d_buried,
         )
 
-    d_bricks_main = check_vicinal_small_bricks(args, d_bricks_main)
+    if args.optimise_cost or args.optimise_stability:
+        d_bricks_main = check_vicinal_small_bricks(args, d_bricks_main)
 
     # convert dic of bricks to lines of bricks
     # after replacing small bricks with large bricks and after recoloring
@@ -824,31 +973,32 @@ def coordBrick2coordLDD(
     #
     # Add 48x48 grey base plate.
     #
-    x_min = float('inf')
-    x_max = float('-inf')
-    y_min = float('inf')
-    y_max = float('-inf')
-    for layer in d_layers.keys():
-        for element in d_layers[layer].keys():
-            for x in d_layers[layer][element]['x'].keys():
-                x_min = min(x, x_min)
-                x_max = max(x, x_max)
-                for y in d_layers[layer][element]['x'][x]:
-                    y_min = min(y, y_min)
-                    y_max = max(y, y_max)
-    plate_size = 48
-    designID_baseplate = 4186
-    materialID_grey = 194
-    refID += 1
-    s = format_line(
-        refID, designID_baseplate, materialID_grey, 0, 0,
-        .8*(x_max+x_min-plate_size)/2, 0, .8*(y_max+y_min+plate_size)/2)
-    lines_lxfml_body.append(s)
+    if args.add_plate is True:
+        x_min = float('inf')
+        x_max = float('-inf')
+        y_min = float('inf')
+        y_max = float('-inf')
+        for layer in d_layers.keys():
+            for element in d_layers[layer].keys():
+                for x in d_layers[layer][element]['x'].keys():
+                    x_min = min(x, x_min)
+                    x_max = max(x, x_max)
+                    for y in d_layers[layer][element]['x'][x]:
+                        y_min = min(y, y_min)
+                        y_max = max(y, y_max)
+        plate_size = 48
+        designID_baseplate = 4186
+        materialID_grey = 194
+        refID += 1
+        s = format_line(
+            refID, designID_baseplate, materialID_grey, 0, 0,
+            .8*(x_max+x_min-plate_size)/2, 0, .8*(y_max+y_min+plate_size)/2)
+        lines_lxfml_body.append(s)
 
     #
     # Add transparent supports.
     #
-    if args.pdb == '2dau':
+    if args.pdb == 'xxx2dau':
         d_covered = {}
         for x in range(x_min, x_max+1):
             d_covered[x] = {}
@@ -1345,16 +1495,18 @@ def check_vicinal_small_bricks(args, d_bricks_main,):
                                             )
 
                                     # replace 2x2 and 2x2 (3003) by a 2x4
+                                    # more stable, but more expensive
                                     elif (
                                         replacement == '2x4' and
                                         designID == 3003 and designID2 == 3003 and
                                         (tx == tx2 or tz == tz2)
                                         ):
 
-                                        d_bricks_main = replace_2x2_w_2x4_main(
-                                            layer, angle, angle2, tx, tx2, tz, tz2,
-                                            d_bricks_main, materialID,
-                                            )
+                                        if args.optimise_stability and not args.optimise_cost:
+                                            d_bricks_main = replace_2x2_w_2x4_main(
+                                                layer, angle, angle2, tx, tx2, tz, tz2,
+                                                d_bricks_main, materialID,
+                                                )
 
                                     #
                                     # replace 1x4 and 1x4 (3010) by a 2x4 (3001)
@@ -1734,17 +1886,19 @@ def dic2lines(args, d_bricks_main):
             ty = 0.96*layer
         else:
             ty = 0.32*layer
-        for tx in d_bricks_main[layer]['tx'].keys():
-            for tz in d_bricks_main[layer]['tx'][tx]['tz'].keys():
-                refID += 1
-                designID = d_bricks_main[layer]['tx'][tx]['tz'][tz]['designID']
-                materialID = d_bricks_main[layer]['tx'][tx]['tz'][tz]['materialID']
-                ay = d_bricks_main[layer]['tx'][tx]['tz'][tz]['ay']
-                angle = d_bricks_main[layer]['tx'][tx]['tz'][tz]['angle']
-                s = format_line(
-                    refID, designID, materialID, angle, ay, .8*tx, ty, .8*tz)
-                lines_lxfml += [s]
-                steps += '        <PartRef partRefID="{}"/>\n'.format(refID)
+        for dtx, dtz in ((0, 0),):
+##        for dtx, dtx in ((0, 0), (48, 48)):
+            for tx in d_bricks_main[layer]['tx'].keys():
+                for tz in d_bricks_main[layer]['tx'][tx]['tz'].keys():
+                    refID += 1
+                    designID = d_bricks_main[layer]['tx'][tx]['tz'][tz]['designID']
+                    materialID = d_bricks_main[layer]['tx'][tx]['tz'][tz]['materialID']
+                    ay = d_bricks_main[layer]['tx'][tx]['tz'][tz]['ay']
+                    angle = d_bricks_main[layer]['tx'][tx]['tz'][tz]['angle']
+                    s = format_line(
+                        refID, designID, materialID, angle, ay, .8*(tx+dtx), ty, .8*(tz+dtz))
+                    lines_lxfml += [s]
+                    steps += '        <PartRef partRefID="{}"/>\n'.format(refID)
         steps += '      </Step>\n'
 
     return lines_lxfml, refID, steps
@@ -1752,29 +1906,57 @@ def dic2lines(args, d_bricks_main):
 
 def format_line(refID, designID, materialID, angle, ay, tx, ty, tz):
 
+    '''I can't remember what ay is.'''
+
+    assert angle in (0, 90), angle
+    assert ay in (0, 1, -1), ay
+
+    # Initiate
+    s = ''
+
     itemNo = '{:d}{:d}'.format(designID, materialID)
 
-    # initiate
-    s = '        <Part'
+    # initiate Brick
+    s += '    <Brick'
     # refID
     s += ' refID="{:d}"'.format(refID)
     # dimension
     s += ' designID="{:d}"'.format(designID)
-    # color
-    s += ' materialID="{:d}"'.format(materialID)
     # dimension & color
     s += ' itemNos="{:s}"'.format(itemNo)
-    # rotation
-    s += ' angle="{:d}"'.format(angle)
-    s += ' ax="0" ay="{:d}" az="0"'.format(ay)
-
-    # position
-    s += ' tx="{:f}"'.format(tx)
-    s += ' ty="{:f}"'.format(ty)
-    s += ' tz="{:f}"'.format(tz)
-
     # terminate
-    s += '/>\n'
+    s += '>\n'
+
+    # initiate Part
+    s += '      <Part'
+    # refID
+    s += ' refID="{:d}"'.format(refID)
+    # dimension
+    s += ' designID="{:d}"'.format(designID)
+    # dimension
+    s += ' partType="rigid"'
+    # color
+    s += ' materials="{:d},0"'.format(materialID)
+    # terminate
+    s += '>\n'
+
+    # initiate Bone
+    s += '        <Bone'
+    # refID
+    s += ' refID="{:d}"'.format(refID)
+    # transformation
+    if angle == 0:
+        s += ' transformation="1,0,0,0,1,0,0,0,1,{},{},{}"'.format(tx, ty, tz)
+    else:
+        # s += ' transformation="0,0,-1,0,1,0,1,0,0,{},{},{}"'.format(tx, ty, tz)
+        s += ' transformation="0,0,1,0,1,0,-1,0,0,{},{},{}"'.format(tx, ty, tz)
+
+    # terminate Bone
+    s += ' />\n'
+    # terminate Part
+    s += '      </Part>\n'
+    # terminate Brick
+    s += '    </Brick>\n'
 
     return s
 
@@ -2235,9 +2417,10 @@ ax="-0.6" ay="-0.6" az="-0.25" tx="0.0" ty="0.0" tz="0.0"/>
       <Group refID="0" angle="0" ax="0" ay="1" az="0" tx="0" ty="0" tz="0">
 ''']
 
-    l_tail1 = ['''      </Group>
-    </Model>
-  </Scene>
+    l_head2 = ['''  <Bricks cameraRefID="0">
+''']
+
+    l_tail1 = ['''  </Bricks>
   <BuildingInstructions>
     <BuildingInstruction>
 {}
@@ -2246,7 +2429,7 @@ ax="-0.6" ay="-0.6" az="-0.25" tx="0.0" ty="0.0" tz="0.0"/>
 </LXFML>
 '''.format(steps)]
 
-    lines = l_head1+l_cameras+l_head2+lines_lxfml_body+l_tail1
+    lines = l_head1 + l_cameras + l_head2 + lines_lxfml_body + l_tail1
 
     fn = os.path.join('lxfml', '{}_{}_{}'.format(
         args.pdb, args.sizeratio, args.brick_or_plate,))
@@ -2254,6 +2437,14 @@ ax="-0.6" ay="-0.6" az="-0.25" tx="0.0" ty="0.0" tz="0.0"/>
         fn += '_hollow'
     if args.bool_color_by_residue is True:
         fn += '_colorbyresidue'
+    if args.bool_color_by_chain is True:
+        fn += '_colorbychain'
+    if args.backbone_only is True:
+        fn += '_backboneonly'
+    if args.backbone_color:
+        fn += '_backbonecolor{}'.format(args.backbone_color)
+    if args.chains:
+        fn += '_chains{}'.format(''.join(args.chains))
     fn += '.lxfml'
     fd = open(fn, 'w')
     fd.writelines(lines)
@@ -2273,21 +2464,24 @@ def split_consecutive_length_into_bricks(
         'rotated_before': [], 'rotated_after': [],
         'normal': [], 'flying': []}
 
-    l_lengths = args.d_brick_sizes[args.brick_or_plate][materialID][width]
+    try:
+        l_lengths = args.d_brick_sizes[args.brick_or_plate][materialID][width]
+    except KeyError:
+        l_lengths = [1, 2, 3, 4, 6, 8]
     l_lengths.sort()
     max_length = l_lengths[-1]
 
     # bricks exist
     if (
         consecutive[1] > 1 and
-        consecutive[1] in args.d_brick_sizes[args.brick_or_plate][materialID][width]
+        consecutive[1] in l_lengths
         ):
         d_bricks['normal'] += [consecutive]
     # odd brick length higher than 1 for which brick exists,
     # if combined with 3x1 brick
     elif (
         consecutive[1] > 1 and
-        consecutive[1]-3 in args.d_brick_sizes[args.brick_or_plate][materialID][width]
+        consecutive[1]-3 in l_lengths
         ):
         d_bricks['normal'] += [[consecutive[0], 3], [consecutive[0]+3, consecutive[1]-3]]
 
@@ -2389,7 +2583,7 @@ def split_consecutive_length_into_bricks(
     elif (
         consecutive[1]
         not in
-        args.d_brick_sizes[args.brick_or_plate][materialID][width]
+        l_lengths
         ):
         # even consecutive length
         if consecutive[1] % 2 == 0:
@@ -2398,8 +2592,7 @@ def split_consecutive_length_into_bricks(
         else:
             length = 3
             d_bricks['normal'] += [[consecutive[0], 3]]
-        max_length = max(
-            args.d_brick_sizes[args.brick_or_plate][materialID][width])
+        max_length = max(l_lengths)
         while length < consecutive[1]:
             # avoid using length 2!!!
             # check that next piece is not a 2!!! remainder length...
@@ -2408,7 +2601,7 @@ def split_consecutive_length_into_bricks(
             elif (
                 consecutive[1]-length
                 not in
-                args.d_brick_sizes[args.brick_or_plate][materialID][width]
+                l_lengths
                 ):
                 brick_length = l_lengths[-2]
             else:
@@ -2667,12 +2860,35 @@ def argparser():
     parser.add_argument(
         '--rotate_x90', action='store_true', help='rotate around x-axis')
     parser.add_argument('--bool_color_by_residue', action='store_true')
+    parser.add_argument('--bool_color_by_chain', action='store_true')
+    parser.add_argument('--colors', nargs="*")
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument(
         '--bool_replace_small_bricks_with_larger_bricks',
         action='store_true')
 
+    parser.add_argument('--chains', nargs='*', default=[])
+
+    parser.add_argument('--res_names', nargs='*')
+    parser.add_argument('--res_name_colors', nargs='*')
+
+    parser.add_argument('--backbone_color')
+
+    parser.add_argument('--color_helix')
+    parser.add_argument('--color_sheet')
+
+    parser.add_argument('--backbone_only', action='store_true')
+    parser.add_argument('--sidechains', nargs='*')
+
+    parser.add_argument('--optimise_cost', action='store_true')
+    parser.add_argument('--optimise_stability', action='store_true')
+
+    parser.add_argument('--add_plate', action='store_true')
+
     args = parser.parse_args()
+
+    if args.colors:
+        assert len(args.colors) == len(args.chains)
 
     # http://en.wikipedia.org/wiki/Atomic_radii_of_the_elements
     # van der Waals radii in 1/100 pm
@@ -2695,27 +2911,6 @@ def argparser():
     }
 
     # http://en.wikipedia.org/wiki/CPK_coloring
-    args.d_colors = {
-        'H': 1,  # white
-        'C': 26,  # black
-        'N': 23,  # bright blue
-        'O': 21,  # bright red
-        'F': 28,  # (dark) green
-        'CL': 28,  # (dark) green
-        'BR': 28,
-        'I': 28,
-        'P': 106,  # bright orange
-        'S': 24,  # bright yellow
-        'FE': 106,  # bright orange
-        'CO': 221,  # bright purple
-        'ZN': 221,  # bright purple
-        '119': 119,  # bright yellowish green (lime)
-        '192': 192,  # reddish brown
-        'SE': 106,
-        '208': 208,  # grey
-    }
-
-    # http://en.wikipedia.org/wiki/CPK_coloring
     args.d_materialIDs = {
             'H': 1,  # white
             'C': 26,  # black
@@ -2727,13 +2922,25 @@ def argparser():
             'I': 28,
             'P': 106,  # bright orange
             'S': 24,  # bright yellow
-            'FE': 106,  # bright orange
+            'SE': 24,  # e.g. in MSE
+##            'FE': 106,  # bright orange
+##            'FE': 154,  # dark red
+            'FE': 192,  # reddish brown
             'CO': 221,  # bright purple
             'ZN': 221,  # bright purple
             '119': 119,  # bright yellowish green (lime)
             '192': 192,  # reddish brown
-            'SE': 106,
-            '208': 208,  # grey
+            '154': 154,  # dark red
+            '194': 194,  # medium stone grey
+            '141': 141,  # earth green / dark green
+            '28': 28,  # normal green
+            '48': 48,  # trans green
+            '49': 49,  # trans fluorescent green / tr.fl.green (2014-2015)
+            '141': 141,  # earth green
+            '26': 26,  # black / carbon (1953-)
+            '140': 140,  # dark blue / earth blue
+            '1': 1,  # white
+            '23': 23,  # blue
             }
 
     # Which brick sizes are available for each color?
