@@ -1,0 +1,30 @@
+{
+    2357: 'Brick 1x2x2 corner',
+    6111: 'Brick 1x10',
+    6112: 'Brick 1x12',
+    4186: 'Baseplate 48x48',
+    3001: 'Brick 2x4',
+    44237: 'Brick 2x6',  # 44237 / 2456
+    93888: 'Brick 2x8',  # 93888 / 3007
+    3024: 'Plate 1x1',
+    3023: 'Plate 1x2',
+    3623: 'Plate 1x3',
+    3710: 'Plate 1x4',
+    3666: 'Plate 1x6',
+    3460: 'Plate 1x8',
+    3005: 'Brick 1x1',
+    3004: 'Brick 1x2',
+    3622: 'Brick 1x3',
+    3010: 'Brick 1x4',
+    3008: 'Brick 1x8',
+    3009: 'Brick 1x6',
+    3034: 'Plate 2x8',
+    3003: 'Brick 2x2',
+    3002: 'Brick 2x3',
+    3022: 'Plate 2x2',
+    3021: 'Plate 2x3',
+    3020: 'Plate 2x4',
+    3795: 'Plate 2x6',
+    3031: 'Plate 4x4',
+    2365: 'Brick 1x16'
+    }
